@@ -5,8 +5,8 @@ go 1.23.0
 require (
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/go-kratos/swagger-api v1.0.1
-	github.com/go-pantheon/vulcan-kit v0.0.0
-	github.com/go-pantheon/vulcan-util v0.0.0
+	github.com/go-pantheon/vulcan-kit v0.0.0-20250315135400-93e66c28757f
+	github.com/go-pantheon/vulcan-util v0.0.0-20250314105405-9ff9c5f409ca
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.21.1
 	github.com/stretchr/testify v1.10.0
@@ -44,7 +44,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/go-pantheon/vulcan-kit => ./deps/vulcan-kit
-
-replace github.com/go-pantheon/vulcan-util => ./deps/vulcan-util
