@@ -42,6 +42,3 @@ app/*/configs
 # generated files
 bin/
 *.log
-
-go.work
-go.work.sum
