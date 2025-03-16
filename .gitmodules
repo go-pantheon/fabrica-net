@@ -1,0 +1,6 @@
+[submodule "deps/vulcan-util"]
+	path = deps/vulcan-util
+	url = https://github.com/go-pantheon/vulcan-util
+[submodule "deps/vulcan-kit"]
+	path = deps/vulcan-kit
+	url = https://github.com/go-pantheon/vulcan-kit
