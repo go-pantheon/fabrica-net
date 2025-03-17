@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/go-pantheon/vulcan-kit/tunnel"
+	"github.com/go-pantheon/fabrica-kit/tunnel"
 )
 
 type CreateTunnelFunc func(ctx context.Context, tp int32, rid int64) (tunnel.Tunnel, error)

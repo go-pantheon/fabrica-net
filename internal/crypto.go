@@ -1,8 +1,8 @@
 package internal
 
 import (
-	net "github.com/go-pantheon/vulcan-net"
-	"github.com/go-pantheon/vulcan-util/security/aes"
+	net "github.com/go-pantheon/fabrica-net"
+	"github.com/go-pantheon/fabrica-util/security/aes"
 	"github.com/pkg/errors"
 )
 

@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/metadata"
-	"github.com/go-pantheon/vulcan-util/sync"
+	"github.com/go-pantheon/fabrica-util/sync"
 	"github.com/pkg/errors"
 )
 

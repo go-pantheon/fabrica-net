@@ -3,7 +3,7 @@ package net
 import (
 	"context"
 
-	"github.com/go-pantheon/vulcan-kit/tunnel"
+	"github.com/go-pantheon/fabrica-kit/tunnel"
 )
 
 const (

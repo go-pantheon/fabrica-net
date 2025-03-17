@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
-	vnet "github.com/go-pantheon/vulcan-net"
-	vctx "github.com/go-pantheon/vulcan-net/context"
-	"github.com/go-pantheon/vulcan-net/internal/bufreader"
-	"github.com/go-pantheon/vulcan-util/sync"
+	vnet "github.com/go-pantheon/fabrica-net"
+	vctx "github.com/go-pantheon/fabrica-net/context"
+	"github.com/go-pantheon/fabrica-net/internal/bufreader"
+	"github.com/go-pantheon/fabrica-util/sync"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 )

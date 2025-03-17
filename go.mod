@@ -1,12 +1,12 @@
-module github.com/go-pantheon/vulcan-net
+module github.com/go-pantheon/fabrica-net
 
 go 1.23.0
 
 require (
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/go-kratos/swagger-api v1.0.1
-	github.com/go-pantheon/vulcan-kit v0.0.0-20250315135400-93e66c28757f
-	github.com/go-pantheon/vulcan-util v0.0.0-20250314105405-9ff9c5f409ca
+	github.com/go-pantheon/fabrica-kit v0.0.1
+	github.com/go-pantheon/fabrica-util v0.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.21.1
 	github.com/stretchr/testify v1.10.0

@@ -4,7 +4,7 @@ import (
 	"maps"
 	"sync"
 
-	"github.com/go-pantheon/vulcan-net/conf"
+	"github.com/go-pantheon/fabrica-net/conf"
 )
 
 var (
