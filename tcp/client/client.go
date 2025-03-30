@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
-	vnet "github.com/go-pantheon/fabrica-net"
-	vctx "github.com/go-pantheon/fabrica-net/context"
+	xnet "github.com/go-pantheon/fabrica-net"
+	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/internal/bufreader"
-	"github.com/go-pantheon/fabrica-util/sync"
+	"github.com/go-pantheon/fabrica-util/xsync"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 )
@@ -28,7 +28,7 @@ func Bind(bind string) Option {
 }
 
 type Client struct {
-	sync.Stoppable
+	xsync.Stoppable
 
 	Id   int64
 	bind string
@@ -41,7 +41,7 @@ type Client struct {
 
 func NewClient(id int64, opts ...Option) *Client {
 	c := &Client{
-		Stoppable: sync.NewStopper(time.Second * 10),
+		Stoppable: xsync.NewStopper(time.Second * 10),
 		Id:        id,
 	}
 
@@ -66,12 +66,12 @@ func (c *Client) Start(ctx context.Context) (err error) {
 		return
 	}
 
-	vctx.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", c.Id))
+	xcontext.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", c.Id))
 
 	c.reader = bufreader.NewReader(conn, 4096)
 	c.conn = conn
 
-	sync.GoSafe(fmt.Sprintf("tcp.client.id=%d", c.Id), func() error {
+	xsync.GoSafe(fmt.Sprintf("tcp.client.id=%d", c.Id), func() error {
 		return c.receive(ctx)
 	})
 	return
@@ -85,13 +85,13 @@ func (c *Client) receive(ctx context.Context) error {
 		select {
 		case <-c.StopTriggered():
 			c.stop()
-			return sync.GroupStopping
+			return xsync.GroupStopping
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	})
 	eg.Go(func() error {
-		return sync.RunSafe(func() error {
+		return xsync.RunSafe(func() error {
 			return c.readPackLoop()
 		})
 	})
@@ -125,9 +125,9 @@ func (c *Client) readPackLoop() error {
 }
 
 func (c *Client) read() (buf []byte, err error) {
-	lb, err := c.reader.ReadFull(vnet.PackLenSize)
+	lb, err := c.reader.ReadFull(xnet.PackLenSize)
 	if err != nil {
-		err = errors.Wrapf(err, "read pack len failed. lenSize=%d", vnet.PackLenSize)
+		err = errors.Wrapf(err, "read pack len failed. lenSize=%d", xnet.PackLenSize)
 		return
 	}
 

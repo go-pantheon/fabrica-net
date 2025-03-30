@@ -10,11 +10,11 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/transport"
 	"github.com/go-pantheon/fabrica-kit/ip"
-	vnet "github.com/go-pantheon/fabrica-net"
+	xnet "github.com/go-pantheon/fabrica-net"
 	"github.com/go-pantheon/fabrica-net/conf"
-	vctx "github.com/go-pantheon/fabrica-net/context"
 	"github.com/go-pantheon/fabrica-net/internal"
-	"github.com/go-pantheon/fabrica-util/sync"
+	xcontext "github.com/go-pantheon/fabrica-net/xcontext"
+	"github.com/go-pantheon/fabrica-util/xsync"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 )
@@ -76,7 +76,7 @@ func AfterDisconnectFunc(f WrapFunc) Option {
 }
 
 type Server struct {
-	sync.Stoppable
+	xsync.Stoppable
 
 	conf    *conf.Config
 	logger  log.Logger
@@ -86,7 +86,7 @@ type Server struct {
 	listener   net.Listener
 	buckets    *internal.Buckets
 
-	handler     vnet.Service
+	handler     xnet.Service
 	readFilter  middleware.Middleware
 	writeFilter middleware.Middleware
 
@@ -94,11 +94,11 @@ type Server struct {
 	afterDisconnectFunc WrapFunc
 }
 
-func NewServer(handler vnet.Service, opts ...Option) (*Server, error) {
+func NewServer(handler xnet.Service, opts ...Option) (*Server, error) {
 	conf.Init()
 
 	s := &Server{
-		Stoppable: sync.NewStopper(conf.Conf.Server.StopTimeout),
+		Stoppable: xsync.NewStopper(conf.Conf.Server.StopTimeout),
 		conf:      conf.Conf,
 		logger:    log.DefaultLogger,
 		readFilter: middleware.Chain(
@@ -137,13 +137,13 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 
-	vctx.SetDeadlineWithContext(ctx, listener, "TcpListener")
+	xcontext.SetDeadlineWithContext(ctx, listener, "TcpListener")
 
 	s.listener = listener
 	idGen := atomic.NewUint64(0)
 	for i := 0; i < s.workerSize; i++ {
 		workerID := i
-		sync.GoSafe(fmt.Sprintf("tcp.Server.acceptLoop.%d", workerID), func() error {
+		xsync.GoSafe(fmt.Sprintf("tcp.Server.acceptLoop.%d", workerID), func() error {
 			return s.acceptLoop(ctx, idGen)
 		})
 	}
@@ -196,12 +196,12 @@ func (s *Server) accept(ctx context.Context, idGen *atomic.Uint64) error {
 
 	conn0 := conn
 	wid := idGen.Inc()
-	sync.GoSafe(fmt.Sprintf("tcp.Server.serve.%d", wid), func() error {
+	xsync.GoSafe(fmt.Sprintf("tcp.Server.serve.%d", wid), func() error {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		if err := s.serve(ctx, conn0, wid); err != nil {
 			return errors.WithMessagef(err, "serve failed wid=%d remote=%s local=%s",
-				wid, vctx.RemoteAddr(conn0), vctx.LocalAddr(conn0))
+				wid, xcontext.RemoteAddr(conn0), xcontext.LocalAddr(conn0))
 		}
 		return nil
 	})
@@ -234,7 +234,7 @@ func (s *Server) work(ctx context.Context, conn *net.TCPConn, wid uint64) (err e
 		if s.afterDisconnectFunc != nil {
 			if err = s.afterDisconnectFunc(ctx, w.Color(), w.UID()); err != nil {
 				log.Errorf("[tcp.Server] afterDisconnectFunc failed. wid=%d remote=%s local=%s uid=%d color=%s state=%d %+v",
-					w.WID(), vctx.RemoteAddr(w.Conn()), vctx.LocalAddr(w.Conn()), w.UID(), w.Color(), w.Status(), err)
+					w.WID(), xcontext.RemoteAddr(w.Conn()), xcontext.LocalAddr(w.Conn()), w.UID(), w.Color(), w.Status(), err)
 			}
 		}
 	}()
@@ -260,8 +260,8 @@ func (s *Server) putBucket(w *internal.Worker) error {
 	if ow := s.buckets.Put(w); ow != nil {
 		log.Errorf("[tcp.Server] worker is replaced, close old worker. wid=%d remote=%s local=%s uid=%d color=%s "+
 			"old-remote=%s old-local=%s old-color=%s",
-			w.WID(), vctx.RemoteAddr(w.Conn()), vctx.LocalAddr(w.Conn()), w.UID(), w.Color(),
-			vctx.RemoteAddr(ow.Conn()), vctx.LocalAddr(ow.Conn()), ow.Color())
+			w.WID(), xcontext.RemoteAddr(w.Conn()), xcontext.LocalAddr(w.Conn()), w.UID(), w.Color(),
+			xcontext.RemoteAddr(ow.Conn()), xcontext.LocalAddr(ow.Conn()), ow.Color())
 		ow.TriggerStop()
 	}
 	return nil

@@ -1,4 +1,4 @@
-package context
+package xcontext
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/metadata"
-	"github.com/go-pantheon/fabrica-util/sync"
+	"github.com/go-pantheon/fabrica-util/xsync"
 	"github.com/pkg/errors"
 )
 
@@ -174,7 +174,7 @@ type Deadline interface {
 }
 
 type DeadlineSetter interface {
-	sync.WaitStoppable
+	xsync.WaitStoppable
 }
 
 // SetDeadlineWithContext use context to control the deadline of the connection

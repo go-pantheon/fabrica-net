@@ -1,12 +1,12 @@
 package internal
 
 import (
-	net "github.com/go-pantheon/fabrica-net"
+	xnet "github.com/go-pantheon/fabrica-net"
 	"github.com/go-pantheon/fabrica-util/security/aes"
 	"github.com/pkg/errors"
 )
 
-func encrypt(ss net.Session, data []byte) ([]byte, error) {
+func encrypt(ss xnet.Session, data []byte) ([]byte, error) {
 	if !ss.IsCrypto() {
 		return data, nil
 	}
@@ -18,7 +18,7 @@ func encrypt(ss net.Session, data []byte) ([]byte, error) {
 	return result, nil
 }
 
-func decrypt(ss net.Session, data []byte) ([]byte, error) {
+func decrypt(ss xnet.Session, data []byte) ([]byte, error) {
 	if !ss.IsCrypto() {
 		return data, nil
 	}

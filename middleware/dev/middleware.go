@@ -8,7 +8,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/transport"
 	"github.com/go-kratos/kratos/v2/transport/http"
-	vctx "github.com/go-pantheon/fabrica-net/context"
+	"github.com/go-pantheon/fabrica-net/xcontext"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -23,8 +23,8 @@ func Server(l log.Logger) middleware.Middleware {
 
 func TransformContext(ctx context.Context) context.Context {
 	if info, ok := transport.FromServerContext(ctx); ok {
-		pairs := make([]string, 0, len(vctx.Keys))
-		for _, k := range vctx.Keys {
+		pairs := make([]string, 0, len(xcontext.Keys))
+		for _, k := range xcontext.Keys {
 			v := info.RequestHeader().Get(k)
 			pairs = append(pairs, k, v)
 		}

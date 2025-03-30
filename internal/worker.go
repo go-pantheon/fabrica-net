@@ -11,27 +11,27 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-pantheon/fabrica-kit/tunnel"
-	vnet "github.com/go-pantheon/fabrica-net"
+	xnet "github.com/go-pantheon/fabrica-net"
 	"github.com/go-pantheon/fabrica-net/conf"
-	vctx "github.com/go-pantheon/fabrica-net/context"
 	"github.com/go-pantheon/fabrica-net/internal/bufreader"
-	"github.com/go-pantheon/fabrica-util/sync"
+	"github.com/go-pantheon/fabrica-net/xcontext"
+	"github.com/go-pantheon/fabrica-util/xsync"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 )
 
 var _ tunnel.Holder = (*Worker)(nil)
-var _ sync.Stoppable = (*Worker)(nil)
+var _ xsync.Stoppable = (*Worker)(nil)
 
 type Worker struct {
 	*tunnelHolder
-	sync.Stoppable
-	sync.CountdownStopper
+	xsync.Stoppable
+	xsync.CountdownStopper
 
 	conf             *conf.Worker
 	reader           *bufreader.Reader
-	service          vnet.Service
+	service          xnet.Service
 	createTunnelFunc CreateTunnelFunc
 	referer          string
 
@@ -41,7 +41,7 @@ type Worker struct {
 	id      uint64
 	conn    *net.TCPConn
 	started *atomic.Bool
-	session vnet.Session
+	session xnet.Session
 
 	replyChanStarted   *atomic.Bool
 	replyChanCompleted chan struct{}
@@ -49,11 +49,11 @@ type Worker struct {
 }
 
 func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf *conf.Worker, referer string,
-	readFilter, writeFilter middleware.Middleware, handler vnet.Service) *Worker {
+	readFilter, writeFilter middleware.Middleware, handler xnet.Service) *Worker {
 	w := &Worker{
 		tunnelHolder:       newTunnelHolder(),
-		Stoppable:          sync.NewStopper(conf.StopTimeout),
-		CountdownStopper:   sync.NewCountdownStopper(),
+		Stoppable:          xsync.NewStopper(conf.StopTimeout),
+		CountdownStopper:   xsync.NewCountdownStopper(),
 		conf:               conf,
 		service:            handler,
 		referer:            referer,
@@ -62,7 +62,7 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf *conf.Work
 		id:                 wid,
 		conn:               conn,
 		started:            atomic.NewBool(false),
-		session:            vnet.DefaultSession(),
+		session:            xnet.DefaultSession(),
 		replyChanStarted:   atomic.NewBool(false),
 		replyChanCompleted: make(chan struct{}),
 	}
@@ -101,32 +101,32 @@ func (w *Worker) Start(ctx context.Context) (err error) {
 }
 
 func (w *Worker) Run(ctx context.Context) error {
-	ctx = vctx.SetUID(ctx, w.UID())
-	ctx = vctx.SetSID(ctx, w.SID())
-	ctx = vctx.SetColor(ctx, w.Color())
-	ctx = vctx.SetStatus(ctx, w.Status())
-	ctx = vctx.SetGateReferer(ctx, w.referer, w.WID())
-	ctx = vctx.SetClientIP(ctx, w.session.ClientIP())
+	ctx = xcontext.SetUID(ctx, w.UID())
+	ctx = xcontext.SetSID(ctx, w.SID())
+	ctx = xcontext.SetColor(ctx, w.Color())
+	ctx = xcontext.SetStatus(ctx, w.Status())
+	ctx = xcontext.SetGateReferer(ctx, w.referer, w.WID())
+	ctx = xcontext.SetClientIP(ctx, w.session.ClientIP())
 
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		select {
 		case <-w.StopTriggered():
-			return sync.GroupStopping
+			return xsync.GroupStopping
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	})
 	eg.Go(func() error {
 		// sc loop
-		err := sync.RunSafe(func() error {
+		err := xsync.RunSafe(func() error {
 			return w.writePackLoop(ctx)
 		})
 		return err
 	})
 	eg.Go(func() error {
 		// cs loop
-		err := sync.RunSafe(func() error {
+		err := xsync.RunSafe(func() error {
 			return w.readPackLoop(ctx)
 		})
 		return err
@@ -165,7 +165,7 @@ func (w *Worker) Stop(ctx context.Context) {
 
 		if err0 := w.conn.Close(); err0 != nil {
 			log.Errorf("[xnet.Worker] conn close failed. wid=%d uid=%d color=%s %+v", w.WID(), w.UID(), w.Color(), err0)
-			vctx.SetDeadlineWithContext(ctx, w.conn, fmt.Sprintf("wid=%d", w.WID()))
+			xcontext.SetDeadlineWithContext(ctx, w.conn, fmt.Sprintf("wid=%d", w.WID()))
 		}
 	})
 }
@@ -173,7 +173,7 @@ func (w *Worker) Stop(ctx context.Context) {
 // handshake must only be used in auth
 func (w *Worker) handshake(ctx context.Context) error {
 	var (
-		ss  vnet.Session
+		ss  xnet.Session
 		in  []byte
 		out []byte
 		err error
@@ -189,7 +189,7 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return err
 	}
 
-	ss.SetClientIP(vctx.RemoteAddr(w.conn))
+	ss.SetClientIP(xcontext.RemoteAddr(w.conn))
 	w.session = ss
 	return nil
 }
@@ -226,7 +226,7 @@ func (w *Worker) tickStopSign(ctx context.Context) (err error) {
 		case <-ticker.C:
 			if t := w.CountdownStopper.ExpiryTime(); !t.IsZero() && time.Now().After(t) {
 				w.TriggerStop()
-				return errors.Wrapf(sync.ErrCountdownTimerExpired, "wid=%d", w.WID())
+				return errors.Wrapf(xsync.ErrCountdownTimerExpired, "wid=%d", w.WID())
 			}
 			// TODO: check black list
 		}
@@ -326,7 +326,7 @@ func (w *Worker) readPack(ctx context.Context) (err error) {
 
 func (w *Worker) read() (buf []byte, err error) {
 	var lenBytes []byte
-	if lenBytes, err = w.reader.ReadFull(vnet.PackLenSize); err != nil {
+	if lenBytes, err = w.reader.ReadFull(xnet.PackLenSize); err != nil {
 		err = errors.Wrap(err, "read packet length failed")
 		return
 	}
@@ -339,8 +339,8 @@ func (w *Worker) read() (buf []byte, err error) {
 		err = errors.New("packet len must greater than 0")
 		return
 	}
-	if packLen > vnet.MaxBodySize {
-		err = errors.Errorf("packet len=%d must less than %d", packLen, vnet.MaxBodySize)
+	if packLen > xnet.MaxBodySize {
+		err = errors.Errorf("packet len=%d must less than %d", packLen, xnet.MaxBodySize)
 		return
 	}
 
@@ -373,7 +373,7 @@ func (w *Worker) Conn() *net.TCPConn {
 	return w.conn
 }
 
-func (w *Worker) Session() vnet.Session {
+func (w *Worker) Session() xnet.Session {
 	return w.session
 }
 
