@@ -1,139 +1,127 @@
 package internal
 
 import (
-	"maps"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-pantheon/fabrica-net/conf"
 )
 
 var (
 	uidWidMap = &sync.Map{}
+	shardCount uint64
 )
 
 type Buckets struct {
-	buckets    []*Bucket
-	bucketSize uint32
+	buckets []*sync.Map
+	size    *atomic.Int64
 }
 
 func NewBuckets(c *conf.Bucket) *Buckets {
-	bs := &Buckets{
-		buckets:    make([]*Bucket, c.BucketSize),
-		bucketSize: uint32(c.BucketSize),
+	shardCount = uint64(c.BucketSize)
+
+	m := &Buckets{
+		buckets: make([]*sync.Map, shardCount),
+		size:    &atomic.Int64{},
 	}
-
-	for i := 0; i < c.BucketSize; i++ {
-		bs.buckets[i] = newBucket(c.WorkerSize)
+	for i := uint64(0); i < shardCount; i++ {
+		m.buckets[i] = &sync.Map{}
 	}
-
-	return bs
+	return m
 }
 
-func (bs *Buckets) Bucket(key uint64) *Bucket {
-	idx := key % uint64(bs.bucketSize)
-	return bs.buckets[idx]
+func (bs *Buckets) getBucket(wid uint64) *sync.Map {
+	return bs.buckets[getBucketKey(wid)]
 }
 
-func (bs *Buckets) Worker(key uint64) *Worker {
-	return bs.Bucket(key).get(key)
+func getBucketKey(wid uint64) uint64 {
+	return wyhash(wid) & (uint64(shardCount) - 1)
 }
 
-func (bs *Buckets) Put(w *Worker) *Worker {
-	b := bs.Bucket(w.WID())
-	return b.put(w)
+// wyhash generates a 64-bit hash for the given 64-bit key using wyhash algorithm.
+func wyhash(key uint64) uint64 {
+	x := key
+	x ^= x >> 33
+	x *= 0xff51afd7ed558ccd
+	x ^= x >> 33
+	x *= 0xc4ceb9fe1a85ec53
+	x ^= x >> 33
+
+	return x
 }
 
-func (bs *Buckets) Del(w *Worker) {
-	if b := bs.Bucket(w.WID()); b != nil {
-		b.del(w)
+func (bs Buckets) Worker(key uint64) *Worker {
+	if any, ok := bs.getBucket(key).Load(key); ok {
+		return any.(*Worker)
 	}
+	return nil
+}
+
+func (bs Buckets) Put(w *Worker) *Worker {
+	old, _ := bs.getBucket(w.WID()).LoadOrStore(w.WID(), w)
+	uidWidMap.Store(w.UID(), w.WID())
+	bs.size.Add(1)
+	return old.(*Worker)
+}
+
+func (bs Buckets) Del(w *Worker) {
+	uidWidMap.Delete(w.UID())
+	bs.getBucket(w.WID()).Delete(w.WID())
+	bs.size.Add(-1)
 }
 
 func (bs *Buckets) Walk(f func(w *Worker) bool) {
 	for _, b := range bs.buckets {
-		b.walk(f)
+		b.Range(func(key, value any) bool {
+			v, ok := value.(*Worker)
+			if !ok {
+				return true
+			}
+			return f(v)
+		})
 	}
 }
 
-func (bs *Buckets) GetByUID(uid int64) *Worker {
+func (bs Buckets) GetByUID(uid int64) *Worker {
 	wid, ok := uidWidMap.Load(uid)
 	if !ok {
 		return nil
 	}
-	return bs.Worker(wid.(uint64))
+	if any, ok := bs.getBucket(wid.(uint64)).Load(wid.(uint64)); ok {
+		return any.(*Worker)
+	}
+	return nil
 }
 
-func (bs *Buckets) GetByUIDs(uids []int64) []*Worker {
-	workers := make([]*Worker, 0, len(uids))
+func (bs Buckets) GetByUIDs(uids []int64) map[int64]*Worker {
+	wids := make([]uint64, 0, len(uids))
 	for _, uid := range uids {
 		if wid, ok := uidWidMap.Load(uid); ok {
-			workers = append(workers, bs.Worker(wid.(uint64)))
+			wids = append(wids, wid.(uint64))
 		}
 	}
-	return workers
-}
 
-type Bucket struct {
-	sync.RWMutex
+	bucketKeys := make([][]uint64, shardCount)
+	result := make(map[int64]*Worker, len(wids))
 
-	workers map[uint64]*Worker
-}
+	for _, wid := range wids {
+		key := getBucketKey(wid)
+		bucketKeys[key] = append(bucketKeys[key], wid)
+	}
 
-func newBucket(workerSize int) (b *Bucket) {
-	b = &Bucket{}
-	b.workers = make(map[uint64]*Worker, workerSize)
-	return
-}
+	for key, wids := range bucketKeys {
+		if len(wids) == 0 {
+			continue
+		}
 
-func (b *Bucket) put(w *Worker) (old *Worker) {
-	b.Lock()
-	defer b.Unlock()
-
-	old = b.workers[w.WID()]
-	b.workers[w.WID()] = w
-	uidWidMap.Store(w.UID(), w.WID())
-	return
-}
-
-func (b *Bucket) del(dw *Worker) {
-	var (
-		ok bool
-		w  *Worker
-	)
-
-	b.Lock()
-	defer b.Unlock()
-
-	if w, ok = b.workers[dw.WID()]; ok {
-		if w == dw {
-			delete(b.workers, w.WID())
-			uidWidMap.Delete(w.UID())
+		bucket := bs.buckets[key]
+		for _, wid := range wids {
+			if any, ok := bucket.Load(wid); ok {
+				worker := any.(*Worker)
+				result[worker.UID()] = worker
+			}
 		}
 	}
-}
 
-func (b *Bucket) get(key uint64) (w *Worker) {
-	b.RLock()
-	defer b.RUnlock()
-
-	w = b.workers[key]
-	return
-}
-
-func (b *Bucket) walk(f func(w *Worker) (continued bool)) {
-	snapshot := b.snapshot()
-	for _, w := range snapshot {
-		if !f(w) {
-			break
-		}
-	}
-}
-
-func (b *Bucket) snapshot() map[uint64]*Worker {
-	b.RLock()
-	defer b.RUnlock()
-
-	workers := make(map[uint64]*Worker, len(b.workers))
-	maps.Copy(workers, b.workers)
-	return workers
+	return result
 }

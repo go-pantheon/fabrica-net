@@ -70,8 +70,7 @@ func Default(env Env) *Config {
 		StopTimeout:           time.Second * 3,
 	}
 	bucket := &Bucket{
-		BucketSize: 32,
-		WorkerSize: 1024,
+		BucketSize: 512,
 	}
 
 	return &Config{
@@ -121,5 +120,4 @@ type Worker struct {
 
 type Bucket struct {
 	BucketSize int
-	WorkerSize int
 }
