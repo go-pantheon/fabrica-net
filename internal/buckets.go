@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	uidWidMap = &sync.Map{}
+	uidWidMap  = &sync.Map{}
 	shardCount uint64
 )
 
@@ -58,9 +58,12 @@ func (bs Buckets) Worker(key uint64) *Worker {
 }
 
 func (bs Buckets) Put(w *Worker) *Worker {
-	old, _ := bs.getBucket(w.WID()).LoadOrStore(w.WID(), w)
+	old, ok := bs.getBucket(w.WID()).LoadOrStore(w.WID(), w)
 	uidWidMap.Store(w.UID(), w.WID())
 	bs.size.Add(1)
+	if !ok {
+		return nil
+	}
 	return old.(*Worker)
 }
 
@@ -71,14 +74,19 @@ func (bs Buckets) Del(w *Worker) {
 }
 
 func (bs *Buckets) Walk(f func(w *Worker) bool) {
+	continued := true
 	for _, b := range bs.buckets {
 		b.Range(func(key, value any) bool {
 			v, ok := value.(*Worker)
 			if !ok {
 				return true
 			}
-			return f(v)
+			continued = f(v)
+			return continued
 		})
+		if !continued {
+			break
+		}
 	}
 }
 

@@ -70,7 +70,7 @@ func Default(env Env) *Config {
 		StopTimeout:           time.Second * 3,
 	}
 	bucket := &Bucket{
-		BucketSize: 512,
+		BucketSize: 128,
 	}
 
 	return &Config{

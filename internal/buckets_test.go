@@ -399,7 +399,7 @@ func BenchmarkMap_Comparison(b *testing.B) {
 	})
 
 	c := &conf.Bucket{
-		BucketSize: 512,
+		BucketSize: 128,
 	}
 
 	buckets := NewBuckets(c)
