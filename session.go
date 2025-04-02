@@ -2,8 +2,7 @@ package net
 
 import (
 	"crypto/cipher"
-
-	"go.uber.org/atomic"
+	"sync/atomic"
 )
 
 type Session interface {
@@ -122,14 +121,15 @@ func (s *session) SetClientIP(ip string) {
 
 type indexInfo struct {
 	start int64
-	index *atomic.Int64
+	index atomic.Int64
 }
 
 func newIndexInfo(start int64) *indexInfo {
-	return &indexInfo{
+	i := &indexInfo{
 		start: start,
-		index: atomic.NewInt64(start),
 	}
+	i.index.Store(start)
+	return i
 }
 
 func (i *indexInfo) Increase() int64 {

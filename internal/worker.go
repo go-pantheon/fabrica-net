@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -17,7 +18,6 @@ import (
 	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-util/xsync"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -40,10 +40,10 @@ type Worker struct {
 
 	id      uint64
 	conn    *net.TCPConn
-	started *atomic.Bool
+	started atomic.Bool
 	session xnet.Session
 
-	replyChanStarted   *atomic.Bool
+	replyChanStarted   atomic.Bool
 	replyChanCompleted chan struct{}
 	replyChan          chan []byte
 }
@@ -61,9 +61,7 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf *conf.Work
 		writeFilter:        writeFilter,
 		id:                 wid,
 		conn:               conn,
-		started:            atomic.NewBool(false),
 		session:            xnet.DefaultSession(),
-		replyChanStarted:   atomic.NewBool(false),
 		replyChanCompleted: make(chan struct{}),
 	}
 

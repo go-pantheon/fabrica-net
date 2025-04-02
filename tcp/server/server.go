@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 
+	"sync/atomic"
+
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
@@ -16,7 +18,6 @@ import (
 	xcontext "github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-util/xsync"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 )
 
 var _ transport.Server = (*Server)(nil)
@@ -140,7 +141,7 @@ func (s *Server) Start(ctx context.Context) error {
 	xcontext.SetDeadlineWithContext(ctx, listener, "TcpListener")
 
 	s.listener = listener
-	idGen := atomic.NewUint64(0)
+	idGen := &atomic.Uint64{}
 	for i := 0; i < s.workerSize; i++ {
 		workerID := i
 		xsync.GoSafe(fmt.Sprintf("tcp.Server.acceptLoop.%d", workerID), func() error {
@@ -195,7 +196,7 @@ func (s *Server) accept(ctx context.Context, idGen *atomic.Uint64) error {
 	}
 
 	conn0 := conn
-	wid := idGen.Inc()
+	wid := idGen.Add(1)
 	xsync.GoSafe(fmt.Sprintf("tcp.Server.serve.%d", wid), func() error {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
