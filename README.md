@@ -2,6 +2,8 @@
 
 **fabrica-net** is a high-performance network library providing multi-protocol access, encrypted communication for gateway service **[go-pantheon/janus](https://github.com/go-pantheon/janus)**.
 
+For more, please check out: [deepwiki/go-pantheon/fabrica-net](https://deepwiki.com/go-pantheon/fabrica-net)
+
 ## Features
 
 - Multi-protocol support (TCP/KCP/WebSocket)
