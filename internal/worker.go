@@ -110,7 +110,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	eg.Go(func() error {
 		select {
 		case <-w.StopTriggered():
-			return xsync.GroupStopping
+			return xsync.ErrGroupStopping
 		case <-ctx.Done():
 			return ctx.Err()
 		}

@@ -1,7 +1,6 @@
 package net
 
 import (
-	"crypto/cipher"
 	"sync/atomic"
 )
 
@@ -25,7 +24,6 @@ type Session interface {
 
 type Encryptor interface {
 	IsCrypto() bool
-	Block() cipher.Block
 	Key() []byte
 }
 
@@ -53,12 +51,11 @@ func DefaultSession() Session {
 	}
 }
 
-func NewSession(userId int64, sid int64, st int64, block cipher.Block, key []byte,
+func NewSession(userId int64, sid int64, st int64, key []byte,
 	crypto bool, color string, status int64) Session {
 	s := &session{
 		encryptor: &encryptor{
 			encrypt: crypto,
-			block:   block,
 			key:     key,
 		},
 		userId:    userId,
@@ -144,16 +141,11 @@ var _ Encryptor = (*encryptor)(nil)
 
 type encryptor struct {
 	encrypt bool
-	block   cipher.Block
 	key     []byte
 }
 
 func (c *encryptor) IsCrypto() bool {
 	return c.encrypt
-}
-
-func (c *encryptor) Block() cipher.Block {
-	return c.block
 }
 
 func (c *encryptor) Key() []byte {

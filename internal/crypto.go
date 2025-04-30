@@ -11,7 +11,7 @@ func encrypt(ss xnet.Session, data []byte) ([]byte, error) {
 		return data, nil
 	}
 
-	result, err := aes.Encrypt(ss.Key(), ss.Block(), data)
+	result, err := aes.Encrypt(ss.Key(), data)
 	if err != nil {
 		return nil, errors.Wrapf(err, "packet encrypt failed")
 	}
@@ -23,7 +23,7 @@ func decrypt(ss xnet.Session, data []byte) ([]byte, error) {
 		return data, nil
 	}
 
-	result, err := aes.Decrypt(ss.Key(), ss.Block(), data)
+	result, err := aes.Decrypt(ss.Key(), data)
 	if err != nil {
 		return nil, errors.WithMessage(err, "packet decrypt failed")
 	}

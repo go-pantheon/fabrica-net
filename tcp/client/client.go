@@ -85,7 +85,7 @@ func (c *Client) receive(ctx context.Context) error {
 		select {
 		case <-c.StopTriggered():
 			c.stop()
-			return xsync.GroupStopping
+			return xsync.ErrGroupStopping
 		case <-ctx.Done():
 			return ctx.Err()
 		}

@@ -611,6 +611,6 @@ func TestBuckets_ConcurrencySafety(t *testing.T) {
 func newTestWorker(id uint64, uid int64) *Worker {
 	return &Worker{
 		id:      id,
-		session: net.NewSession(uid, 0, 0, nil, nil, false, "", 0),
+		session: net.NewSession(uid, 0, 0, nil, false, "", 0),
 	}
 }
