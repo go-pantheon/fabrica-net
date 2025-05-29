@@ -90,10 +90,6 @@ func (w *Worker) Start(ctx context.Context) (err error) {
 		return err
 	}
 
-	if err = w.Conn().SetDeadline(time.Now().Add(w.conf.RequestIdleTimeout)); err != nil {
-		return errors.Wrap(err, "set conn deadline after handshake failed")
-	}
-
 	w.started.Store(true)
 	return
 }
@@ -302,6 +298,10 @@ func (w *Worker) write(pack []byte) (err error) {
 }
 
 func (w *Worker) readPack(ctx context.Context) (err error) {
+	if err = w.Conn().SetDeadline(time.Now().Add(w.conf.RequestIdleTimeout)); err != nil {
+		return errors.Wrap(err, "set conn deadline after handshake failed")
+	}
+
 	var in []byte
 	if in, err = w.read(); err != nil {
 		return
@@ -318,7 +318,6 @@ func (w *Worker) readPack(ctx context.Context) (err error) {
 		return
 	}
 
-	_ = w.conn.SetDeadline(time.Now().Add(w.conf.RequestIdleTimeout))
 	return
 }
 
