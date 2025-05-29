@@ -79,10 +79,6 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf *conf.Work
 }
 
 func (w *Worker) Start(ctx context.Context) (err error) {
-	if err = w.Conn().SetDeadline(time.Now().Add(w.conf.HandshakeTimeout)); err != nil {
-		return errors.Wrap(err, "set conn deadline before handshake failed")
-	}
-
 	if err = w.handshake(ctx); err != nil {
 		return err
 	}
@@ -172,6 +168,10 @@ func (w *Worker) handshake(ctx context.Context) error {
 		out []byte
 		err error
 	)
+
+	if err = w.Conn().SetDeadline(time.Now().Add(w.conf.HandshakeTimeout)); err != nil {
+		return errors.Wrap(err, "set conn deadline before handshake failed")
+	}
 
 	if in, err = w.read(); err != nil {
 		return err
