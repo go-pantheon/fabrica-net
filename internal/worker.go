@@ -162,6 +162,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		if errors.Is(err, xsync.ErrGroupIsClosing) {
 			return nil
 		}
+
 		return err
 	}
 

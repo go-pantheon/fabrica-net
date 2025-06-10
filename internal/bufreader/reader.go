@@ -97,6 +97,7 @@ func (r *Reader) ReadFull(n int) ([]byte, error) {
 		}
 
 		var extraSpace int
+
 		switch {
 		case n <= 4096: // 50% extra for small buffers
 			extraSpace = n >> 1

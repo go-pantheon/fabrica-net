@@ -188,9 +188,10 @@ func TestClose(t *testing.T) {
 
 		data := []byte{0x01, 0x02}
 		br := NewReader(bytes.NewReader(data), 2)
-		br.ReadByte()
+		_, err := br.ReadByte()
+		require.NoError(t, err)
 
-		err := br.Close()
+		err = br.Close()
 		assert.NoError(t, err)
 	})
 }
@@ -207,6 +208,7 @@ func TestPoolConcurrency(t *testing.T) {
 	require.NoError(t, err)
 
 	wg := sync.WaitGroup{}
+
 	for _, dataSize := range dataSizes {
 		for i := range goroutines {
 			wg.Add(1)
@@ -366,7 +368,8 @@ func BenchmarkReadByte(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		br.ReadByte()
+		_, err := br.ReadByte()
+		require.NoError(b, err)
 
 		if i%4096 == 0 {
 			br = NewReader(bytes.NewReader(data), 4096)
