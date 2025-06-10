@@ -45,6 +45,7 @@ func Color(ctx context.Context) string {
 	if md, ok := metadata.FromServerContext(ctx); ok {
 		return md.Get(CtxColor)
 	}
+
 	return ""
 }
 
@@ -64,6 +65,7 @@ func UID(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, errors.Wrapf(err, "uid must be int64, but got %s", v)
 	}
+
 	return id, nil
 }
 

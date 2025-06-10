@@ -28,6 +28,7 @@ func InitReaderPool(thresholds []int) error {
 	}
 
 	pool = p
+
 	return nil
 }
 
@@ -50,6 +51,7 @@ func (r *Reader) ReadByte() (n byte, err error) {
 	if r.unreadBytes() > 0 {
 		n = r.buf[r.r]
 		r.r++
+
 		return
 	}
 
@@ -66,8 +68,10 @@ func (r *Reader) ReadByte() (n byte, err error) {
 	if err = r.readAtLeast(1); err != nil {
 		return
 	}
+
 	n = r.buf[r.r]
 	r.r++
+
 	return
 }
 
@@ -81,6 +85,7 @@ func (r *Reader) ReadFull(n int) ([]byte, error) {
 	if unread := r.unreadBytes(); unread >= n {
 		result := r.buf[r.r : r.r+n]
 		r.r += n
+
 		return result, nil
 	}
 
@@ -122,6 +127,7 @@ func (r *Reader) ReadFull(n int) ([]byte, error) {
 
 	result := r.buf[r.r : r.r+n]
 	r.r += n
+
 	return result, nil
 }
 
@@ -146,10 +152,12 @@ func (r *Reader) Close() error {
 	if r.cleanedUp {
 		return ErrBufReaderAlreadyClosed
 	}
+
 	r.cleanedUp = true
 	pool.Free(r.buf)
 	r.w, r.r = 0, 0
 	r.buf = nil
+
 	return nil
 }
 
@@ -158,6 +166,7 @@ func nextPowerOfTwo(n int) int {
 	if n <= 1 {
 		return 1
 	}
+
 	n--
 	n |= n >> 1
 	n |= n >> 2
@@ -165,5 +174,6 @@ func nextPowerOfTwo(n int) int {
 	n |= n >> 8
 	n |= n >> 16
 	n |= n >> 32
+
 	return n + 1
 }

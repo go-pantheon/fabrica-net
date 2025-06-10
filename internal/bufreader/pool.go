@@ -57,14 +57,15 @@ func newSyncPool(thresholds []int) (*syncPool, error) {
 		poolIndex := i
 		pools[i].New = func() any {
 			var size int
+
 			if poolIndex < len(thresholds) {
 				size = thresholds[poolIndex]
 			} else {
 				// For the largest pool, use double of max threshold as default size
 				size = thresholds[len(thresholds)-1] * 2
 			}
-			buf := make([]byte, size)
-			return &buf
+
+			return make([]byte, size)
 		}
 	}
 

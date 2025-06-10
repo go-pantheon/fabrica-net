@@ -57,9 +57,10 @@ func TestReadByte(t *testing.T) {
 		t.Parallel()
 
 		br := NewReader(bytes.NewReader(nil), 1)
-		br.Close()
+		err := br.Close()
+		require.NoError(t, err)
 
-		_, err := br.ReadByte()
+		_, err = br.ReadByte()
 		assert.ErrorIs(t, err, ErrBufReaderAlreadyClosed)
 	})
 }
@@ -122,9 +123,10 @@ func TestReadFull(t *testing.T) {
 		t.Parallel()
 
 		br := NewReader(bytes.NewReader(nil), 1)
-		br.Close()
+		err := br.Close()
+		require.NoError(t, err)
 
-		_, err := br.ReadFull(1)
+		_, err = br.ReadFull(1)
 		assert.ErrorIs(t, err, ErrBufReaderAlreadyClosed)
 	})
 }
@@ -156,6 +158,8 @@ func TestEdgeCases(t *testing.T) {
 	})
 
 	t.Run("exact power of two", func(t *testing.T) {
+		t.Parallel()
+
 		data := make([]byte, 2048)
 		br := NewReader(bytes.NewReader(data), 1024)
 
@@ -213,10 +217,14 @@ func TestPoolConcurrency(t *testing.T) {
 				for range iterations {
 					data := make([]byte, dataSize)
 					cc := rand.NewChaCha8([32]byte{byte(idx)})
-					cc.Read(data)
+					_, err := cc.Read(data)
+					require.NoError(t, err)
 
 					br := NewReader(bytes.NewReader(data), 1024)
-					defer br.Close()
+					defer func() {
+						err := br.Close()
+						require.NoError(t, err)
+					}()
 
 					if rand.IntN(2) == 0 {
 						if idx%2 == 0 {
@@ -245,14 +253,20 @@ func TestReadLoopAccuracy(t *testing.T) {
 	t.Parallel()
 
 	t.Run("small chunks", func(t *testing.T) {
+		t.Parallel()
+
 		const totalSize = 1 << 20 // 1MB
 		data := make([]byte, totalSize)
 
 		cc := rand.NewChaCha8([32]byte{})
-		cc.Read(data) // 生成随机测试数据
+		_, err := cc.Read(data) // 生成随机测试数据
+		require.NoError(t, err)
 
 		br := NewReader(bytes.NewReader(data), 1024)
-		defer br.Close()
+		defer func() {
+			err := br.Close()
+			require.NoError(t, err)
+		}()
 
 		var readBuf bytes.Buffer
 
@@ -267,6 +281,7 @@ func TestReadLoopAccuracy(t *testing.T) {
 			require.NoError(t, err)
 
 			readBuf.Write(chunk)
+
 			remaining -= readSize
 		}
 
@@ -280,10 +295,14 @@ func TestReadLoopAccuracy(t *testing.T) {
 
 		data := make([]byte, totalSize)
 		cc := rand.NewChaCha8([32]byte{})
-		cc.Read(data)
+		_, err := cc.Read(data)
+		require.NoError(t, err)
 
 		br := NewReader(bytes.NewReader(data), 1024)
-		defer br.Close()
+		defer func() {
+			err := br.Close()
+			require.NoError(t, err)
+		}()
 
 		var readBuf bytes.Buffer
 
@@ -298,6 +317,7 @@ func TestReadLoopAccuracy(t *testing.T) {
 			require.NoError(t, err)
 
 			readBuf.Write(chunk)
+
 			remaining -= readSize
 		}
 
@@ -317,7 +337,9 @@ func BenchmarkConcurrentReadFull(b *testing.B) {
 
 	data := make([]byte, totalDataSize)
 	cc := rand.NewChaCha8([32]byte{})
-	cc.Read(data)
+
+	_, err = cc.Read(data)
+	require.NoError(b, err)
 
 	b.ResetTimer()
 	b.SetParallelism(goroutines)
@@ -342,6 +364,7 @@ func BenchmarkReadByte(b *testing.B) {
 	br := NewReader(bytes.NewReader(data), 4096)
 
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		br.ReadByte()
 

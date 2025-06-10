@@ -143,12 +143,14 @@ func (w *Worker) Run(ctx context.Context) error {
 		err := xsync.RunSafe(func() error {
 			return w.writePackLoop(ctx)
 		})
+
 		return err
 	})
 	eg.Go(func() error {
 		err := xsync.RunSafe(func() error {
 			return w.readPackLoop(ctx)
 		})
+
 		return err
 	})
 	eg.Go(func() error {
@@ -184,7 +186,7 @@ func (w *Worker) Push(ctx context.Context, out []byte) error {
 		return errors.New("worker is stopping")
 	}
 
-	if len(out) <= 0 {
+	if len(out) == 0 {
 		return errors.New("push msg len <= 0")
 	}
 
@@ -241,9 +243,11 @@ func (w *Worker) writePack(ctx context.Context, pack []byte) (err error) {
 	}
 
 	var out any
+
 	if out, err = next(ctx, pack); err != nil {
 		return
 	}
+
 	return w.write(out.([]byte))
 }
 
@@ -410,6 +414,7 @@ func (w *Worker) UID() int64 {
 	if w.session == nil {
 		return 0
 	}
+
 	return w.session.UID()
 }
 
@@ -417,6 +422,7 @@ func (w *Worker) SID() int64 {
 	if w.session == nil {
 		return 0
 	}
+
 	return w.session.SID()
 }
 
@@ -424,6 +430,7 @@ func (w *Worker) Color() string {
 	if w.session == nil {
 		return ""
 	}
+
 	return w.session.Color()
 }
 
@@ -431,6 +438,7 @@ func (w *Worker) Status() int64 {
 	if w.session == nil {
 		return 0
 	}
+
 	return w.session.Status()
 }
 
@@ -438,5 +446,6 @@ func (w *Worker) Endpoint() string {
 	if w.conn == nil {
 		return ""
 	}
+
 	return w.conn.RemoteAddr().String()
 }

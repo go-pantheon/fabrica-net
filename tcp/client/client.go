@@ -154,6 +154,7 @@ func (c *Client) write(pack []byte) (err error) {
 
 	packLen := int32(len(pack))
 	err = binary.Write(&buf, binary.BigEndian, packLen)
+
 	if err != nil {
 		return errors.Wrapf(err, "write pack len failed. len=%d", packLen)
 	}

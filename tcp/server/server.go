@@ -58,6 +58,7 @@ func ReadFilter(m middleware.Middleware) Option {
 			s.readFilter = m
 			return
 		}
+
 		s.readFilter = middleware.Chain(s.readFilter, m)
 	}
 }
@@ -69,6 +70,7 @@ func WriteFilter(m middleware.Middleware) Option {
 			s.writeFilter = m
 			return
 		}
+
 		s.writeFilter = middleware.Chain(s.writeFilter, m)
 	}
 }
@@ -173,6 +175,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	log.Infof("[tcp.Server] listening on %s", addr.String())
+
 	return nil
 }
 
@@ -316,7 +319,7 @@ func (s *Server) WIDList() []uint64 {
 }
 
 func (s *Server) Push(ctx context.Context, uid int64, pack []byte) error {
-	if len(pack) <= 0 {
+	if len(pack) == 0 {
 		return errors.New("push msg len <= 0")
 	}
 
@@ -329,7 +332,7 @@ func (s *Server) Push(ctx context.Context, uid int64, pack []byte) error {
 }
 
 func (s *Server) BatchPush(ctx context.Context, uids []int64, pack []byte) (err error) {
-	if len(pack) <= 0 {
+	if len(pack) == 0 {
 		return errors.New("push group msg len <= 0")
 	}
 
@@ -344,7 +347,7 @@ func (s *Server) BatchPush(ctx context.Context, uids []int64, pack []byte) (err 
 }
 
 func (s *Server) Broadcast(ctx context.Context, pack []byte) (err error) {
-	if len(pack) <= 0 {
+	if len(pack) == 0 {
 		return errors.New("broadcast msg len <= 0")
 	}
 
@@ -352,6 +355,7 @@ func (s *Server) Broadcast(ctx context.Context, pack []byte) (err error) {
 		if pusherr := w.Push(ctx, pack); pusherr != nil {
 			err = errors.JoinUnsimilar(err, pusherr)
 		}
+
 		return true
 	})
 
