@@ -37,13 +37,12 @@ func TestNewWorkerManager(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &conf.Bucket{
+			c := conf.Bucket{
 				BucketSize: tt.bucketSize,
 			}
 
 			bs := NewWorkerManager(c)
 			assert.Equal(t, tt.wantSize, len(bs.buckets))
-			assert.Equal(t, uint64(tt.bucketSize), shardCount)
 		})
 	}
 }
@@ -51,7 +50,7 @@ func TestNewWorkerManager(t *testing.T) {
 func TestWorkerManager_BasicOperations(t *testing.T) {
 	t.Parallel()
 
-	c := &conf.Bucket{
+	c := conf.Bucket{
 		BucketSize: 16,
 	}
 	bs := NewWorkerManager(c)
@@ -78,10 +77,9 @@ func TestWorkerManager_BasicOperations(t *testing.T) {
 	assert.Nil(t, got)
 }
 
+//nolint:paralleltest
 func TestWorkerManager_UIDOperations(t *testing.T) {
-	t.Parallel()
-
-	c := &conf.Bucket{
+	c := conf.Bucket{
 		BucketSize: 16,
 	}
 	bs := NewWorkerManager(c)
@@ -109,7 +107,7 @@ func TestWorkerManager_UIDOperations(t *testing.T) {
 
 //nolint:paralleltest
 func TestWorkerManager_ConcurrentOperations(t *testing.T) {
-	c := &conf.Bucket{
+	c := conf.Bucket{
 		BucketSize: 16,
 	}
 	bs := NewWorkerManager(c)
@@ -146,7 +144,7 @@ func TestWorkerManager_ConcurrentOperations(t *testing.T) {
 func TestWorkerManager_Walk(t *testing.T) {
 	t.Parallel()
 
-	c := &conf.Bucket{
+	c := conf.Bucket{
 		BucketSize: 16,
 	}
 	bs := NewWorkerManager(c)
@@ -181,7 +179,7 @@ func TestWorkerManager_Walk(t *testing.T) {
 }
 
 func BenchmarkWorkerManager_Operations(b *testing.B) {
-	c := &conf.Bucket{
+	c := conf.Bucket{
 		BucketSize: 16,
 	}
 	bs := NewWorkerManager(c)
@@ -442,7 +440,7 @@ func benchmarkSyncMap(b *testing.B, workers []*Worker) {
 }
 
 func benchmarkBuckets(b *testing.B, workers []*Worker) {
-	c := &conf.Bucket{
+	c := conf.Bucket{
 		BucketSize: 128,
 	}
 	buckets := NewWorkerManager(c)
@@ -488,10 +486,9 @@ func benchmarkBuckets(b *testing.B, workers []*Worker) {
 	})
 }
 
+//nolint:paralleltest
 func TestWorkerManager_ConcurrencySafety(t *testing.T) {
-	t.Parallel()
-
-	c := &conf.Bucket{
+	c := conf.Bucket{
 		BucketSize: 16,
 	}
 	bs := NewWorkerManager(c)
@@ -507,33 +504,33 @@ func TestWorkerManager_ConcurrencySafety(t *testing.T) {
 		workers[i] = newTestWorker(uint64(i), int64(i))
 	}
 
+	//nolint:paralleltest
 	t.Run("ConcurrentPut", func(t *testing.T) {
-		t.Parallel()
 		testConcurrentPut(t, bs, workers, numGoroutines, numOperations)
 	})
 
+	//nolint:paralleltest
 	t.Run("ConcurrentGet", func(t *testing.T) {
-		t.Parallel()
 		testConcurrentGet(t, bs, workers, numGoroutines, numOperations)
 	})
 
+	//nolint:paralleltest
 	t.Run("ConcurrentGetByUID", func(t *testing.T) {
-		t.Parallel()
 		testConcurrentGetByUID(t, bs, workers, numGoroutines, numOperations)
 	})
 
+	//nolint:paralleltest
 	t.Run("ConcurrentPutAndGet", func(t *testing.T) {
-		t.Parallel()
 		testConcurrentPutAndGet(t, bs, workers, numGoroutines, numOperations)
 	})
 
+	//nolint:paralleltest
 	t.Run("ConcurrentDel", func(t *testing.T) {
-		t.Parallel()
 		testConcurrentDel(t, bs, workers, numGoroutines, numOperations)
 	})
 
+	//nolint:paralleltest
 	t.Run("ConcurrentWalk", func(t *testing.T) {
-		t.Parallel()
 		testConcurrentWalk(t, bs, workers, numGoroutines, numWorkers)
 	})
 }

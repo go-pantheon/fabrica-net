@@ -191,16 +191,15 @@ func TestClose(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest
 func TestPoolConcurrency(t *testing.T) {
-	t.Parallel()
-
 	var (
 		goroutines = 1000
 		iterations = 100
 		dataSizes  = []int{1024, 4096, 16 << 10} // 1024, 4KB, 16KB
 	)
 
-	err := InitReaderPool([]int{1024, 64 << 10, 512})
+	err := InitReaderPool([]int{512, 1024, 64 << 10})
 	require.NoError(t, err)
 
 	wg := sync.WaitGroup{}

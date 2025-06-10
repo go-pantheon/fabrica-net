@@ -9,24 +9,23 @@ import (
 
 var (
 	// uidWidMap is a map of user IDs to worker IDs. It put before buckets and delete after buckets for fast search by uid.
-	uidWidMap  = &sync.Map{}
-	shardCount uint64
+	uidWidMap = &sync.Map{}
 )
 
 type WorkerManager struct {
-	buckets []*sync.Map
-	size    *atomic.Int64
+	buckets    []*sync.Map
+	size       *atomic.Int64
+	shardCount uint64
 }
 
-func NewWorkerManager(c *conf.Bucket) *WorkerManager {
-	shardCount = uint64(c.BucketSize)
-
+func NewWorkerManager(c conf.Bucket) *WorkerManager {
 	m := &WorkerManager{
-		buckets: make([]*sync.Map, shardCount),
-		size:    &atomic.Int64{},
+		buckets:    make([]*sync.Map, uint64(c.BucketSize)),
+		size:       &atomic.Int64{},
+		shardCount: uint64(c.BucketSize),
 	}
 
-	for i := range shardCount {
+	for i := range m.shardCount {
 		m.buckets[i] = &sync.Map{}
 	}
 
@@ -53,16 +52,16 @@ func (m *WorkerManager) Put(w *Worker) (old *Worker) {
 	return nil
 }
 
-func (bs *WorkerManager) Del(w *Worker) {
+func (m *WorkerManager) Del(w *Worker) {
 	uidWidMap.Delete(w.UID())
-	bs.getBucket(w.WID()).Delete(w.WID())
-	bs.size.Add(-1)
+	m.getBucket(w.WID()).Delete(w.WID())
+	m.size.Add(-1)
 }
 
-func (bs *WorkerManager) Walk(f func(w *Worker) bool) {
+func (m *WorkerManager) Walk(f func(w *Worker) bool) {
 	continued := true
 
-	for _, b := range bs.buckets {
+	for _, b := range m.buckets {
 		b.Range(func(key, value any) bool {
 			v, ok := value.(*Worker)
 			if !ok {
@@ -80,20 +79,20 @@ func (bs *WorkerManager) Walk(f func(w *Worker) bool) {
 	}
 }
 
-func (bs *WorkerManager) GetByUID(uid int64) *Worker {
+func (m *WorkerManager) GetByUID(uid int64) *Worker {
 	wid, ok := uidWidMap.Load(uid)
 	if !ok {
 		return nil
 	}
 
-	if a, ok := bs.getBucket(wid.(uint64)).Load(wid.(uint64)); ok {
+	if a, ok := m.getBucket(wid.(uint64)).Load(wid.(uint64)); ok {
 		return a.(*Worker)
 	}
 
 	return nil
 }
 
-func (bs *WorkerManager) GetByUIDs(uids []int64) map[int64]*Worker {
+func (m *WorkerManager) GetByUIDs(uids []int64) map[int64]*Worker {
 	wids := make([]uint64, 0, len(uids))
 
 	for _, uid := range uids {
@@ -102,11 +101,11 @@ func (bs *WorkerManager) GetByUIDs(uids []int64) map[int64]*Worker {
 		}
 	}
 
-	bucketKeys := make([][]uint64, shardCount)
+	bucketKeys := make([][]uint64, m.shardCount)
 	result := make(map[int64]*Worker, len(wids))
 
 	for _, wid := range wids {
-		key := getBucketKey(wid)
+		key := getBucketKey(wid, m.shardCount)
 		bucketKeys[key] = append(bucketKeys[key], wid)
 	}
 
@@ -115,7 +114,7 @@ func (bs *WorkerManager) GetByUIDs(uids []int64) map[int64]*Worker {
 			continue
 		}
 
-		bucket := bs.buckets[key]
+		bucket := m.buckets[key]
 		for _, wid := range wids {
 			if w, ok := bucket.Load(wid); ok {
 				worker := w.(*Worker)
@@ -127,11 +126,11 @@ func (bs *WorkerManager) GetByUIDs(uids []int64) map[int64]*Worker {
 	return result
 }
 
-func (bs *WorkerManager) getBucket(wid uint64) *sync.Map {
-	return bs.buckets[getBucketKey(wid)]
+func (m *WorkerManager) getBucket(wid uint64) *sync.Map {
+	return m.buckets[getBucketKey(wid, m.shardCount)]
 }
 
-func getBucketKey(wid uint64) uint64 {
+func getBucketKey(wid uint64, shardCount uint64) uint64 {
 	return wyhash(wid) & (shardCount - 1)
 }
 

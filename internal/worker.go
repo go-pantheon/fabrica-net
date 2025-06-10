@@ -33,7 +33,7 @@ type Worker struct {
 
 	tunnelManager *tunnelManager
 
-	conf             *conf.Worker
+	conf             conf.Worker
 	svc              xnet.Service
 	createTunnelFunc CreateTunnelFunc
 	delyClosure      xsync.Delayable
@@ -47,7 +47,7 @@ type Worker struct {
 	replyChan          chan []byte
 }
 
-func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf *conf.Worker, referer string,
+func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worker, referer string,
 	readFilter, writeFilter middleware.Middleware, svc xnet.Service) *Worker {
 	w := &Worker{
 		Closable:           xsync.NewClosure(conf.StopTimeout),

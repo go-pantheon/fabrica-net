@@ -58,7 +58,7 @@ linters:
           disabled: true
         - name: exported
           disabled: true
-        
+
 formatters:
   enable:
     - gofmt
