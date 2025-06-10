@@ -2,6 +2,7 @@ package bufreader
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -9,129 +10,139 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewReader(t *testing.T) {
+	t.Parallel()
+
 	r := NewReader(bytes.NewReader(nil), 1024)
-	if r == nil {
-		t.Fatal("NewReader returned nil")
-	}
+	assert.NotNil(t, r)
 }
 
 func TestReadByte(t *testing.T) {
+	t.Parallel()
+
 	t.Run("basic read", func(t *testing.T) {
+		t.Parallel()
+
 		data := []byte{0x01, 0x02}
 		br := NewReader(bytes.NewReader(data), 2)
 
 		b, err := br.ReadByte()
-		if err != nil || b != 0x01 {
-			t.Fatalf("ReadByte failed: %v, %v", b, err)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, b, byte(0x01))
 
 		b, err = br.ReadByte()
-		if err != nil || b != 0x02 {
-			t.Fatalf("ReadByte failed: %v, %v", b, err)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, b, byte(0x02))
 
 		_, err = br.ReadByte()
-		if err != io.EOF {
-			t.Fatalf("Expected EOF, got %v", err)
-		}
+		assert.ErrorIs(t, err, io.EOF)
 	})
 
 	t.Run("buffer expansion", func(t *testing.T) {
+		t.Parallel()
+
 		data := make([]byte, 2048)
 		br := NewReader(bytes.NewReader(data), 1024)
 
-		for i := 0; i < 2048; i++ {
+		for range 2048 {
 			_, err := br.ReadByte()
-			if err != nil {
-				t.Fatalf("ReadByte failed at %d: %v", i, err)
-			}
+			assert.Nil(t, err)
 		}
 	})
 
 	t.Run("closed reader", func(t *testing.T) {
+		t.Parallel()
+
 		br := NewReader(bytes.NewReader(nil), 1)
 		br.Close()
+
 		_, err := br.ReadByte()
-		if err != ErrBufReaderAlreadyClosed {
-			t.Fatalf("Expected closed error, got %v", err)
-		}
+		assert.ErrorIs(t, err, ErrBufReaderAlreadyClosed)
 	})
 }
 
 func TestReadFull(t *testing.T) {
+	t.Parallel()
+
 	t.Run("exact buffer size", func(t *testing.T) {
+		t.Parallel()
+
 		data := bytes.Repeat([]byte{0xaa}, 1024)
 		br := NewReader(bytes.NewReader(data), 1024)
 
 		result, err := br.ReadFull(1024)
-		if err != nil || len(result) != 1024 {
-			t.Fatalf("ReadFull failed: %v, %v", len(result), err)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, result, data)
 	})
 
 	t.Run("multiple reads with buffer growth", func(t *testing.T) {
+		t.Parallel()
+
 		data := bytes.Repeat([]byte{0xbb}, 4096)
 		br := NewReader(bytes.NewReader(data), 1024)
 
 		// First read: 1024 bytes (exact buffer size)
-		_, err := br.ReadFull(1024)
-		if err != nil {
-			t.Fatal(err)
-		}
+		ret1, err := br.ReadFull(1024)
+		require.NoError(t, err)
+		assert.Equal(t, len(ret1), 1024)
 
 		// Second read: 2048 bytes (needs buffer expansion)
-		result, err := br.ReadFull(2048)
-		if err != nil || len(result) != 2048 {
-			t.Fatalf("ReadFull failed: %v, %v", len(result), err)
-		}
+		ret2, err := br.ReadFull(2048)
+		require.NoError(t, err)
+		assert.Equal(t, len(ret2), 2048)
 
 		// Third read: remaining 1024 bytes
-		result, err = br.ReadFull(1024)
-		if err != nil || len(result) != 1024 {
-			t.Fatalf("ReadFull failed: %v, %v", len(result), err)
-		}
+		ret3, err := br.ReadFull(1024)
+		require.NoError(t, err)
+		assert.Equal(t, len(ret3), 1024)
 	})
 
 	t.Run("invalid size", func(t *testing.T) {
+		t.Parallel()
+
 		br := NewReader(bytes.NewReader(nil), 1)
 		_, err := br.ReadFull(-1)
-		if err != ErrBufReaderSize {
-			t.Fatalf("Expected size error, got %v", err)
-		}
+		assert.ErrorIs(t, err, ErrBufReaderSize)
 	})
 
 	t.Run("partial read then EOF", func(t *testing.T) {
+		t.Parallel()
+
 		data := make([]byte, 500)
 		br := NewReader(bytes.NewReader(data), 1000)
+
 		_, err := br.ReadFull(1000)
-		if err != io.ErrUnexpectedEOF {
-			t.Fatalf("Expected unexpected EOF, got %v", err)
-		}
+		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	})
 
 	t.Run("read after close", func(t *testing.T) {
+		t.Parallel()
+
 		br := NewReader(bytes.NewReader(nil), 1)
 		br.Close()
+
 		_, err := br.ReadFull(1)
-		if err != ErrBufReaderAlreadyClosed {
-			t.Fatalf("Expected closed error, got %v", err)
-		}
+		assert.ErrorIs(t, err, ErrBufReaderAlreadyClosed)
 	})
 }
 
 func TestEdgeCases(t *testing.T) {
+	t.Parallel()
+
 	t.Run("empty reader", func(t *testing.T) {
+		t.Parallel()
+
 		br := NewReader(bytes.NewReader(nil), 1)
 		_, err := br.ReadByte()
-		if err != io.EOF {
-			t.Fatalf("Expected EOF, got %v", err)
-		}
+		assert.ErrorIs(t, err, io.EOF)
 	})
 
 	t.Run("buffer compaction", func(t *testing.T) {
+		t.Parallel()
+
 		data := make([]byte, 3000)
 		br := NewReader(bytes.NewReader(data), 1024)
 
@@ -147,54 +158,64 @@ func TestEdgeCases(t *testing.T) {
 	t.Run("exact power of two", func(t *testing.T) {
 		data := make([]byte, 2048)
 		br := NewReader(bytes.NewReader(data), 1024)
-		result, err := br.ReadFull(2048)
-		if err != nil || len(result) != 2048 {
-			t.Fatalf("ReadFull failed: %v, %v", len(result), err)
-		}
+
+		ret, err := br.ReadFull(2048)
+		require.NoError(t, err)
+		assert.Equal(t, len(ret), 2048)
 	})
 }
 
 func TestClose(t *testing.T) {
+	t.Parallel()
+
 	t.Run("double close", func(t *testing.T) {
+		t.Parallel()
+
 		br := NewReader(bytes.NewReader(nil), 1)
 		err := br.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		err = br.Close()
-		if err != ErrBufReaderAlreadyClosed {
-			t.Fatalf("Expected closed error, got %v", err)
-		}
+		assert.ErrorIs(t, err, ErrBufReaderAlreadyClosed)
 	})
 
 	t.Run("close with remaining buffer", func(t *testing.T) {
+		t.Parallel()
+
 		data := []byte{0x01, 0x02}
 		br := NewReader(bytes.NewReader(data), 2)
 		br.ReadByte()
+
 		err := br.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	})
 }
 
 func TestPoolConcurrency(t *testing.T) {
+	t.Parallel()
+
 	var (
 		goroutines = 1000
 		iterations = 100
 		dataSizes  = []int{1024, 4096, 16 << 10} // 1024, 4KB, 16KB
 	)
 
-	InitReaderPool(1024, 64<<10, 512)
+	err := InitReaderPool([]int{1024, 64 << 10, 512})
+	require.NoError(t, err)
 
 	wg := sync.WaitGroup{}
 	for _, dataSize := range dataSizes {
 		for i := range goroutines {
 			wg.Add(1)
+
 			go func(idx int) {
 				defer wg.Done()
+
 				for range iterations {
 					data := make([]byte, dataSize)
 					cc := rand.NewChaCha8([32]byte{byte(idx)})
 					cc.Read(data)
+
 					br := NewReader(bytes.NewReader(data), 1024)
 					defer br.Close()
 
@@ -202,25 +223,28 @@ func TestPoolConcurrency(t *testing.T) {
 						if idx%2 == 0 {
 							for range 10 {
 								_, err := br.ReadFull(8)
-								assert.Nil(t, err)
+								require.NoError(t, err)
 							}
 						} else {
 							_, err := br.ReadFull(dataSize)
-							assert.Nil(t, err)
+							require.NoError(t, err)
 						}
 					} else {
 						result, err := br.ReadFull(dataSize)
-						assert.Nil(t, err)
+						require.NoError(t, err)
 						assert.Equal(t, result, data)
 					}
 				}
 			}(i)
 		}
 	}
+
 	wg.Wait()
 }
 
 func TestReadLoopAccuracy(t *testing.T) {
+	t.Parallel()
+
 	t.Run("small chunks", func(t *testing.T) {
 		const totalSize = 1 << 20 // 1MB
 		data := make([]byte, totalSize)
@@ -232,6 +256,7 @@ func TestReadLoopAccuracy(t *testing.T) {
 		defer br.Close()
 
 		var readBuf bytes.Buffer
+
 		remaining := totalSize
 		for remaining > 0 {
 			readSize := 512 + rand.IntN(512)
@@ -240,20 +265,20 @@ func TestReadLoopAccuracy(t *testing.T) {
 			}
 
 			chunk, err := br.ReadFull(readSize)
-			if err != nil {
-				t.Fatalf("ReadFull failed at %d bytes: %v", readBuf.Len(), err)
-			}
+			require.NoError(t, err)
+
 			readBuf.Write(chunk)
 			remaining -= readSize
 		}
 
-		if !bytes.Equal(data, readBuf.Bytes()) {
-			t.Fatal("Read data does not match original")
-		}
+		assert.Equal(t, readBuf.Bytes(), data)
 	})
 
 	t.Run("large chunks with buffer growth", func(t *testing.T) {
+		t.Parallel()
+
 		const totalSize = 16 << 20 // 16MB
+
 		data := make([]byte, totalSize)
 		cc := rand.NewChaCha8([32]byte{})
 		cc.Read(data)
@@ -262,6 +287,7 @@ func TestReadLoopAccuracy(t *testing.T) {
 		defer br.Close()
 
 		var readBuf bytes.Buffer
+
 		remaining := totalSize
 		for remaining > 0 {
 			readSize := 4096 + rand.IntN(4096)
@@ -270,21 +296,19 @@ func TestReadLoopAccuracy(t *testing.T) {
 			}
 
 			chunk, err := br.ReadFull(readSize)
-			if err != nil {
-				t.Fatalf("ReadFull failed at %d bytes: %v", readBuf.Len(), err)
-			}
+			require.NoError(t, err)
+
 			readBuf.Write(chunk)
 			remaining -= readSize
 		}
 
-		if !bytes.Equal(data, readBuf.Bytes()) {
-			t.Fatal("Read data does not match original")
-		}
+		assert.Equal(t, readBuf.Bytes(), data)
 	})
 }
 
 func BenchmarkConcurrentReadFull(b *testing.B) {
-	InitReaderPool(1024, 65536, 128)
+	err := InitReaderPool([]int{1024, 65536, 128})
+	require.NoError(b, err)
 
 	const (
 		goroutines    = 8
@@ -300,13 +324,14 @@ func BenchmarkConcurrentReadFull(b *testing.B) {
 	b.SetParallelism(goroutines)
 	b.RunParallel(func(pb *testing.PB) {
 		br := NewReader(bytes.NewReader(data), chunkSize)
+
 		for pb.Next() {
-			_, err := br.ReadFull(chunkSize)
-			if err != nil {
-				if err == io.EOF {
+			if _, err := br.ReadFull(chunkSize); err != nil {
+				if errors.Is(err, io.EOF) {
 					br = NewReader(bytes.NewReader(data), chunkSize)
 					continue
 				}
+
 				b.Fatal(err)
 			}
 		}
@@ -320,6 +345,7 @@ func BenchmarkReadByte(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		br.ReadByte()
+
 		if i%4096 == 0 {
 			br = NewReader(bytes.NewReader(data), 4096)
 		}
@@ -327,17 +353,18 @@ func BenchmarkReadByte(b *testing.B) {
 }
 
 func BenchmarkReadFull(b *testing.B) {
-	InitReaderPool(1024, 131072, 128)
+	err := InitReaderPool([]int{1024, 131072, 128})
+	require.NoError(b, err)
 
-	sizes := []int{128, 256, 512, 512+128, 1024, 1024+128, 2048, 2048+128, 4096, 8192, 8192 + 1024, 16384, 32768, 65536, 65536 + 1024}
+	sizes := []int{128, 256, 512, 512 + 128, 1024, 1024 + 128, 2048, 2048 + 128, 4096, 8192, 8192 + 1024, 16384, 32768, 65536, 65536 + 1024}
 	data := make([]byte, 131072)
 
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("size-%d", size), func(b *testing.B) {
-			br := NewReader(bytes.NewReader(data), size)
 			b.SetBytes(int64(size))
 			b.ResetTimer()
 
+			br := NewReader(bytes.NewReader(data), size)
 			// Calculate how many reads we can do before needing to reset
 			readsBeforeReset := len(data) / size
 
@@ -345,15 +372,17 @@ func BenchmarkReadFull(b *testing.B) {
 				if i%readsBeforeReset == 0 {
 					br = NewReader(bytes.NewReader(data), size)
 				}
+
 				_, err := br.ReadFull(size)
-				assert.Nil(b, err)
+				require.NoError(b, err)
 			}
 		})
 	}
 }
 
 func BenchmarkReadFullAllocations(b *testing.B) {
-	InitReaderPool(1024, 65536, 128)
+	err := InitReaderPool([]int{1024, 65536, 128})
+	require.NoError(b, err)
 
 	data := make([]byte, 1<<20)
 	br := NewReader(bytes.NewReader(data), 1024)
@@ -367,6 +396,7 @@ func BenchmarkReadFullAllocations(b *testing.B) {
 		if i%readsBeforeReset == 0 {
 			br = NewReader(bytes.NewReader(data), 1024)
 		}
+
 		_, err := br.ReadFull(1024)
 		assert.Nil(b, err)
 	}

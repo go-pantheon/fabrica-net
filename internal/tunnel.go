@@ -4,38 +4,32 @@ import (
 	"context"
 	"sync"
 
-	"github.com/go-pantheon/fabrica-kit/tunnel"
+	"github.com/go-pantheon/fabrica-net/xnet"
 )
 
-type CreateTunnelFunc func(ctx context.Context, tp int32, rid int64) (tunnel.Tunnel, error)
+type CreateTunnelFunc func(ctx context.Context, tunnelType int32, objectId int64) (xnet.Tunnel, error)
 
-type tunnelHolder struct {
-	sync.RWMutex
+type tunnelManager struct {
+	mu sync.RWMutex
 
-	tunnelGroups map[int32]map[int64]tunnel.Tunnel // TunnelType -> oid -> tunnel
+	tunnelGroups map[int32]map[int64]xnet.Tunnel // TunnelType -> oid -> tunnel
 }
 
-func newTunnelHolder() *tunnelHolder {
-	th := &tunnelHolder{
-		tunnelGroups: make(map[int32]map[int64]tunnel.Tunnel, 16),
+const defaultTunnelGroupSize = 32
+
+func newTunnelManager(tunnelGroupSize int) *tunnelManager {
+	if tunnelGroupSize <= 0 || tunnelGroupSize > 512 {
+		tunnelGroupSize = defaultTunnelGroupSize
 	}
-	return th
-}
 
-func (h *tunnelHolder) stop() {
-	h.Lock()
-	defer h.Unlock()
-
-	for _, tg := range h.tunnelGroups {
-		for _, t := range tg {
-			t.TriggerStop()
-		}
+	return &tunnelManager{
+		tunnelGroups: make(map[int32]map[int64]xnet.Tunnel, tunnelGroupSize),
 	}
 }
 
-func (h *tunnelHolder) tunnel(tp int32, oid int64) tunnel.Tunnel {
-	h.RLock()
-	defer h.RUnlock()
+func (h *tunnelManager) tunnel(tp int32, oid int64) xnet.Tunnel {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 
 	tg, ok := h.tunnelGroups[tp]
 	if !ok {
@@ -43,24 +37,25 @@ func (h *tunnelHolder) tunnel(tp int32, oid int64) tunnel.Tunnel {
 	}
 
 	t, ok := tg[oid]
-	if !ok || t.IsStopping() {
+	if !ok || t.OnClosing() {
 		return nil
 	}
+
 	return t
 }
 
-func (h *tunnelHolder) createTunnel(ctx context.Context, tp int32, oid int64, create CreateTunnelFunc) (tunnel.Tunnel, error) {
-	h.Lock()
-	defer h.Unlock()
+func (h *tunnelManager) createTunnel(ctx context.Context, tp int32, oid int64, initCap int, create CreateTunnelFunc) (xnet.Tunnel, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	tg, ok := h.tunnelGroups[tp]
 	if !ok {
-		tg = make(map[int64]tunnel.Tunnel, 16)
+		tg = make(map[int64]xnet.Tunnel, initCap)
 		h.tunnelGroups[tp] = tg
 	}
 
 	t, ok := tg[oid]
-	if ok && !t.IsStopping() {
+	if ok && !t.OnClosing() {
 		return t, nil
 	}
 
@@ -70,5 +65,25 @@ func (h *tunnelHolder) createTunnel(ctx context.Context, tp int32, oid int64, cr
 	}
 
 	tg[oid] = t
+
 	return t, nil
+}
+
+func (h *tunnelManager) close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for _, tg := range h.tunnelGroups {
+		for _, t := range tg {
+			t.TriggerClose()
+		}
+	}
+
+	for tp, tg := range h.tunnelGroups {
+		for _, t := range tg {
+			t.WaitClosed()
+		}
+
+		delete(h.tunnelGroups, tp)
+	}
 }

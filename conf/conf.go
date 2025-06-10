@@ -39,6 +39,8 @@ func init() {
 
 // Init init config.
 func Init() {
+	flag.Parse()
+
 	env := Env{
 		Region:    region,
 		Zone:      zone,
@@ -49,10 +51,10 @@ func Init() {
 		Offline:   offline,
 	}
 
-	Conf = Default(env)
+	Conf = New(env)
 }
 
-func Default(env Env) *Config {
+func New(env Env) *Config {
 	tcp := &Server{
 		WorkerSize:   runtime.NumCPU(),
 		Bind:         ":7000",
@@ -61,6 +63,7 @@ func Default(env Env) *Config {
 		KeepAlive:    true,
 		StopTimeout:  time.Second * 30,
 	}
+
 	protocol := &Worker{
 		ReaderBufSize:         8192,
 		ReplyChanSize:         1024,
@@ -68,7 +71,10 @@ func Default(env Env) *Config {
 		RequestIdleTimeout:    time.Second * 60,
 		WaitMainTunnelTimeout: time.Second * 30,
 		StopTimeout:           time.Second * 3,
+		TunnelGroupSize:       32,
+		TickInterval:          time.Second * 10,
 	}
+
 	bucket := &Bucket{
 		BucketSize: 128,
 	}
@@ -116,6 +122,8 @@ type Worker struct {
 	RequestIdleTimeout    time.Duration
 	WaitMainTunnelTimeout time.Duration
 	StopTimeout           time.Duration
+	TunnelGroupSize       int
+	TickInterval          time.Duration
 }
 
 type Bucket struct {

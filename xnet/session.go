@@ -1,11 +1,11 @@
-package net
+package xnet
 
 import (
 	"sync/atomic"
 )
 
 type Session interface {
-	Encryptor
+	Cryptor
 
 	UID() int64
 	SID() int64
@@ -22,18 +22,21 @@ type Session interface {
 	IncreaseSCIndex() int64
 }
 
-type Encryptor interface {
-	IsCrypto() bool
+// Cryptor is the interface for the cryptor.
+type Cryptor interface {
 	Key() []byte
+	IsCrypto() bool
+	Encrypt(data []byte) ([]byte, error)
+	Decrypt(data []byte) ([]byte, error)
 }
 
 var _ Session = (*session)(nil)
 
 type session struct {
-	*encryptor
+	Cryptor
 
-	userId    int64
-	serverId  int64
+	userID    int64
+	serverID  int64
 	clientIP  string
 	color     string
 	status    int64
@@ -43,29 +46,34 @@ type session struct {
 	scIndex *indexInfo
 }
 
+// DefaultSession creates a new session with default values.
 func DefaultSession() Session {
 	return &session{
-		encryptor: &encryptor{},
-		csIndex:   newIndexInfo(0),
-		scIndex:   newIndexInfo(1),
+		Cryptor: NewNoCryptor(),
+		csIndex: newIndexInfo(0),
+		scIndex: newIndexInfo(1),
 	}
 }
 
-func NewSession(userId int64, sid int64, st int64, key []byte,
-	crypto bool, color string, status int64) Session {
+// NewSession creates a new session.
+//
+// userId: the user id of the session.
+// sid: the server id of the session.
+// st: the start time of the session.
+// encryptor: the encryptor of the session.
+// color: the color of the session.
+func NewSession(userId int64, sid int64, st int64, encryptor Cryptor, color string, status int64) Session {
 	s := &session{
-		encryptor: &encryptor{
-			encrypt: crypto,
-			key:     key,
-		},
-		userId:    userId,
+		Cryptor:   encryptor,
+		userID:    userId,
 		color:     color,
 		status:    status,
-		serverId:  sid,
+		serverID:  sid,
 		startTime: st,
 		csIndex:   newIndexInfo(0),
 		scIndex:   newIndexInfo(1),
 	}
+
 	return s
 }
 
@@ -90,17 +98,18 @@ func (s *session) StartTime() int64 {
 }
 
 func (s *session) UID() int64 {
-	return s.userId
+	return s.userID
 }
 
 func (s *session) SID() int64 {
-	return s.serverId
+	return s.serverID
 }
 
 func (s *session) Color() string {
 	if len(s.color) == 0 {
 		return ""
 	}
+
 	return s.color
 }
 
@@ -126,6 +135,7 @@ func newIndexInfo(start int64) *indexInfo {
 		start: start,
 	}
 	i.index.Store(start)
+
 	return i
 }
 
@@ -135,19 +145,4 @@ func (i *indexInfo) Increase() int64 {
 
 func (i *indexInfo) Load() int64 {
 	return i.index.Load()
-}
-
-var _ Encryptor = (*encryptor)(nil)
-
-type encryptor struct {
-	encrypt bool
-	key     []byte
-}
-
-func (c *encryptor) IsCrypto() bool {
-	return c.encrypt
-}
-
-func (c *encryptor) Key() []byte {
-	return c.key
 }

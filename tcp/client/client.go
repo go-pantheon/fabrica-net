@@ -9,16 +9,18 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
-	xnet "github.com/go-pantheon/fabrica-net"
-	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/internal/bufreader"
+	"github.com/go-pantheon/fabrica-net/xcontext"
+	"github.com/go-pantheon/fabrica-net/xnet"
+	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
-	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 )
 
+// ErrTimeout is an error that occurs when the client times out.
 var ErrTimeout = errors.New("i/o timeout")
 
+// Option is a function that configures the client.
 type Option func(c *Client)
 
 func Bind(bind string) Option {
@@ -28,7 +30,7 @@ func Bind(bind string) Option {
 }
 
 type Client struct {
-	xsync.Stoppable
+	xsync.Closable
 
 	Id   int64
 	bind string
@@ -36,19 +38,20 @@ type Client struct {
 	conn   *net.TCPConn
 	reader *bufreader.Reader
 
-	receivePackChan chan []byte
+	receivedPackChan chan []byte
 }
 
 func NewClient(id int64, opts ...Option) *Client {
 	c := &Client{
-		Stoppable: xsync.NewStopper(time.Second * 10),
-		Id:        id,
+		Closable: xsync.NewClosure(time.Second * 10),
+		Id:       id,
 	}
 
 	for _, o := range opts {
 		o(c)
 	}
-	c.receivePackChan = make(chan []byte, 1024)
+
+	c.receivedPackChan = make(chan []byte, 1024)
 
 	return c
 }
@@ -56,14 +59,12 @@ func NewClient(id int64, opts ...Option) *Client {
 func (c *Client) Start(ctx context.Context) (err error) {
 	addr, err := net.ResolveTCPAddr("tcp", c.bind)
 	if err != nil {
-		err = errors.Wrapf(err, "resolved failed. cli=%d addr=%s", c.Id, c.bind)
-		return
+		return errors.Wrapf(err, "resolve addr failed. addr=%s", c.bind)
 	}
 
 	conn, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
-		err = errors.Wrapf(err, "connect failed. cli=%d addr=%s", c.Id, c.bind)
-		return
+		return errors.Wrapf(err, "connect failed. addr=%s", c.bind)
 	}
 
 	xcontext.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", c.Id))
@@ -74,7 +75,8 @@ func (c *Client) Start(ctx context.Context) (err error) {
 	xsync.GoSafe(fmt.Sprintf("tcp.client.id=%d", c.Id), func() error {
 		return c.receive(ctx)
 	})
-	return
+
+	return nil
 }
 
 func (c *Client) receive(ctx context.Context) error {
@@ -83,9 +85,9 @@ func (c *Client) receive(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		select {
-		case <-c.StopTriggered():
+		case <-c.CloseTriggered():
 			c.stop()
-			return xsync.ErrGroupStopping
+			return xsync.ErrGroupIsClosing
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -96,22 +98,23 @@ func (c *Client) receive(ctx context.Context) error {
 		})
 	})
 
-	if err := eg.Wait(); err != nil {
-		return err
-	}
-	return nil
+	return eg.Wait()
 }
 
 func (c *Client) stop() {
-	c.DoStop(func() {
+	if doCloseErr := c.DoClose(func() {
 		if c.reader != nil {
 			if err := c.reader.Close(); err != nil {
 				log.Errorf("[tcp.Client] cli=%d bufreader close failed", c.Id)
 			}
 		}
-		close(c.receivePackChan)
-		log.Debugf("[tcp.Client] cli=%d is closed", c.Id)
-	})
+
+		close(c.receivedPackChan)
+
+		log.Infof("[tcp.Client] client is closed. id=%d", c.Id)
+	}); doCloseErr != nil {
+		log.Errorf("[tcp.Client] client is closed. id=%d err=%v", c.Id, doCloseErr)
+	}
 }
 
 func (c *Client) readPackLoop() error {
@@ -120,50 +123,52 @@ func (c *Client) readPackLoop() error {
 		if err != nil {
 			return err
 		}
-		c.receivePackChan <- pack
+
+		c.receivedPackChan <- pack
 	}
 }
 
 func (c *Client) read() (buf []byte, err error) {
 	lb, err := c.reader.ReadFull(xnet.PackLenSize)
 	if err != nil {
-		err = errors.Wrapf(err, "read pack len failed. lenSize=%d", xnet.PackLenSize)
-		return
+		return nil, errors.Wrapf(err, "read pack len failed")
 	}
 
 	var packLen int32
+
 	err = binary.Read(bytes.NewReader(lb), binary.BigEndian, &packLen)
 	if err != nil {
-		return
+		return nil, errors.Wrapf(err, "parse pack len failed")
 	}
+
 	buf, err = c.reader.ReadFull(int(packLen))
 	if err != nil {
-		err = errors.Wrapf(err, "read pack body failed. len=%d", packLen)
+		return nil, errors.Wrapf(err, "read pack body failed. len=%d", packLen)
 	}
-	return
+
+	return buf, nil
 }
 
 func (c *Client) write(pack []byte) (err error) {
 	var buf bytes.Buffer
 
-	err = binary.Write(&buf, binary.BigEndian, uint32(len(pack)))
+	packLen := int32(len(pack))
+	err = binary.Write(&buf, binary.BigEndian, packLen)
 	if err != nil {
-		err = errors.Wrapf(err, "write pack len failed. len=%d", len(pack))
-		return
+		return errors.Wrapf(err, "write pack len failed. len=%d", packLen)
 	}
 
 	_, err = buf.Write(pack)
 	if err != nil {
-		err = errors.Wrapf(err, "write pack body failed. len=%d", len(pack))
-		return
+		return errors.Wrapf(err, "write pack body failed. len=%d", packLen)
 	}
 
 	_, err = c.conn.Write(buf.Bytes())
 	if err != nil {
-		err = errors.Wrapf(err, "write pack failed. len=%d", len(pack))
-		return
+		return errors.Wrapf(err, "write pack failed. len=%d", packLen)
 	}
-	return
+
+	return nil
 }
 
 func (c *Client) Send(pack []byte) (err error) {
@@ -171,5 +176,5 @@ func (c *Client) Send(pack []byte) (err error) {
 }
 
 func (c *Client) Receive() <-chan []byte {
-	return c.receivePackChan
+	return c.receivedPackChan
 }

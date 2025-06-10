@@ -11,37 +11,36 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
-	"github.com/go-pantheon/fabrica-kit/tunnel"
-	xnet "github.com/go-pantheon/fabrica-net"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal/bufreader"
 	"github.com/go-pantheon/fabrica-net/xcontext"
+	"github.com/go-pantheon/fabrica-net/xnet"
+	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
-	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 )
 
-var _ tunnel.Holder = (*Worker)(nil)
-var _ xsync.Stoppable = (*Worker)(nil)
+var _ xnet.Worker = (*Worker)(nil)
 
 type Worker struct {
-	*tunnelHolder
-	xsync.Stoppable
-	xsync.CountdownStopper
+	xsync.Closable
+
+	id      uint64
+	conn    *net.TCPConn
+	reader  *bufreader.Reader
+	started atomic.Bool
+	session xnet.Session
+
+	tunnelManager *tunnelManager
 
 	conf             *conf.Worker
-	reader           *bufreader.Reader
-	service          xnet.Service
+	svc              xnet.Service
 	createTunnelFunc CreateTunnelFunc
+	delyClosure      xsync.Delayable
 	referer          string
 
 	readFilter  middleware.Middleware
 	writeFilter middleware.Middleware
-
-	id      uint64
-	conn    *net.TCPConn
-	started atomic.Bool
-	session xnet.Session
 
 	replyChanStarted   atomic.Bool
 	replyChanCompleted chan struct{}
@@ -49,32 +48,29 @@ type Worker struct {
 }
 
 func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf *conf.Worker, referer string,
-	readFilter, writeFilter middleware.Middleware, handler xnet.Service) *Worker {
+	readFilter, writeFilter middleware.Middleware, svc xnet.Service) *Worker {
 	w := &Worker{
-		tunnelHolder:       newTunnelHolder(),
-		Stoppable:          xsync.NewStopper(conf.StopTimeout),
-		CountdownStopper:   xsync.NewCountdownStopper(),
+		Closable:           xsync.NewClosure(conf.StopTimeout),
+		delyClosure:        xsync.NewDelayer(),
+		tunnelManager:      newTunnelManager(conf.TunnelGroupSize),
+		id:                 wid,
+		conn:               conn,
 		conf:               conf,
-		service:            handler,
+		svc:                svc,
 		referer:            referer,
 		readFilter:         readFilter,
 		writeFilter:        writeFilter,
-		id:                 wid,
-		conn:               conn,
-		session:            xnet.DefaultSession(),
 		replyChanCompleted: make(chan struct{}),
 	}
 
-	w.createTunnelFunc = func(ctx context.Context, tp int32, oid int64) (tunnel.Tunnel, error) {
-		t, err := w.service.CreateTunnel(ctx, w.session, tp, oid, w)
-		if err != nil {
-			return nil, err
-		}
-		return t, nil
+	w.createTunnelFunc = func(ctx context.Context, tp int32, oid int64) (xnet.Tunnel, error) {
+		return w.svc.CreateTunnel(ctx, w.session, tp, oid, w)
 	}
 
+	w.session = xnet.DefaultSession()
 	w.replyChan = make(chan []byte, conf.ReplyChanSize)
 	w.reader = bufreader.NewReader(conn, conf.ReaderBufSize)
+
 	return w
 }
 
@@ -82,82 +78,14 @@ func (w *Worker) Start(ctx context.Context) (err error) {
 	if err = w.handshake(ctx); err != nil {
 		return err
 	}
-	if err = w.service.OnConnected(ctx, w.session); err != nil {
+
+	if err = w.svc.OnConnected(ctx, w.session); err != nil {
 		return err
 	}
 
 	w.started.Store(true)
+
 	return
-}
-
-func (w *Worker) Run(ctx context.Context) error {
-	ctx = xcontext.SetUID(ctx, w.UID())
-	ctx = xcontext.SetSID(ctx, w.SID())
-	ctx = xcontext.SetColor(ctx, w.Color())
-	ctx = xcontext.SetStatus(ctx, w.Status())
-	ctx = xcontext.SetGateReferer(ctx, w.referer, w.WID())
-	ctx = xcontext.SetClientIP(ctx, w.session.ClientIP())
-
-	eg, ctx := errgroup.WithContext(ctx)
-	eg.Go(func() error {
-		select {
-		case <-w.StopTriggered():
-			return xsync.ErrGroupStopping
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	})
-	eg.Go(func() error {
-		// sc loop
-		err := xsync.RunSafe(func() error {
-			return w.writePackLoop(ctx)
-		})
-		return err
-	})
-	eg.Go(func() error {
-		// cs loop
-		err := xsync.RunSafe(func() error {
-			return w.readPackLoop(ctx)
-		})
-		return err
-	})
-	eg.Go(func() error {
-		err := w.tickStopSign(ctx)
-		return err
-	})
-
-	if err := eg.Wait(); err != nil {
-		return errors.WithMessagef(err, "uid=%d color=%s", w.UID(), w.Color())
-	}
-	return nil
-}
-
-func (w *Worker) Stop(ctx context.Context) {
-	w.DoStop(func() {
-		if w.IsStarted() {
-			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			defer cancel()
-			if err := w.service.OnDisconnect(ctx, w.session); err != nil {
-				log.Errorf("[xnet.Worker] onDisconnect failed. wid=%d uid=%d color=%s %+v", w.WID(), w.UID(), w.Color(), err)
-			}
-		}
-
-		close(w.replyChan)
-		if w.replyChanStarted.Load() {
-			<-w.replyChanCompleted
-		}
-
-		if err := w.reader.Close(); err != nil {
-			log.Errorf("[xnet.Worker] reader close failed. wid=%d uid=%d color=%s %+v", w.WID(), w.UID(), w.Color(), err)
-		}
-
-		w.tunnelHolder.stop()
-
-		if err0 := w.conn.Close(); err0 != nil {
-			log.Errorf("[xnet.Worker] conn close failed. wid=%d uid=%d color=%s %+v", w.WID(), w.UID(), w.Color(), err0)
-			xcontext.SetDeadlineWithContext(ctx, w.conn, fmt.Sprintf("wid=%d", w.WID()))
-		}
-	})
 }
 
 // handshake must only be used in auth
@@ -176,53 +104,114 @@ func (w *Worker) handshake(ctx context.Context) error {
 	if in, err = w.read(); err != nil {
 		return err
 	}
-	if out, ss, err = w.service.Auth(ctx, in); err != nil {
+
+	if out, ss, err = w.svc.Auth(ctx, in); err != nil {
 		return err
 	}
+
 	if err = w.write(out); err != nil {
 		return err
 	}
 
 	ss.SetClientIP(xcontext.RemoteAddr(w.conn))
 	w.session = ss
+
 	return nil
 }
 
-func (w *Worker) Tunnel(ctx context.Context, mod int32, oid int64) (t tunnel.Tunnel, err error) {
-	tp, err := w.service.TunnelType(mod)
+func (w *Worker) Run(ctx context.Context) error {
+	ctx = xcontext.SetUID(ctx, w.UID())
+	ctx = xcontext.SetSID(ctx, w.SID())
+	ctx = xcontext.SetOID(ctx, w.UID())
+	ctx = xcontext.SetColor(ctx, w.Color())
+	ctx = xcontext.SetStatus(ctx, w.Status())
+	ctx = xcontext.SetGateReferer(ctx, w.referer, w.WID())
+	ctx = xcontext.SetClientIP(ctx, w.session.ClientIP())
+
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		select {
+		case <-w.CloseTriggered():
+			return xsync.ErrGroupIsClosing
+		case <-w.delyClosure.Wait():
+			return errors.Wrapf(xsync.ErrDelayerExpired, "wid=%d", w.WID())
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+	eg.Go(func() error {
+		err := xsync.RunSafe(func() error {
+			return w.writePackLoop(ctx)
+		})
+		return err
+	})
+	eg.Go(func() error {
+		err := xsync.RunSafe(func() error {
+			return w.readPackLoop(ctx)
+		})
+		return err
+	})
+	eg.Go(func() error {
+		err := w.tick(ctx)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		if errors.Is(err, xsync.ErrGroupIsClosing) {
+			return nil
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (w *Worker) Tunnel(ctx context.Context, mod int32, oid int64) (t xnet.Tunnel, err error) {
+	tp, initCap, err := w.svc.TunnelType(mod)
 	if err != nil {
-		return
+		return nil, err
 	}
-	if t = w.tunnel(tp, oid); t != nil {
-		return
+
+	if t = w.tunnelManager.tunnel(tp, oid); t != nil {
+		return t, nil
 	}
-	return w.createTunnel(ctx, tp, oid, w.createTunnelFunc)
+
+	return w.tunnelManager.createTunnel(ctx, tp, oid, initCap, w.createTunnelFunc)
 }
 
 func (w *Worker) Push(ctx context.Context, out []byte) error {
-	if w.IsStopping() {
+	if w.OnClosing() {
 		return errors.New("worker is stopping")
 	}
+
 	if len(out) <= 0 {
 		return errors.New("push msg len <= 0")
 	}
 
 	w.replyChan <- out
+
 	return nil
 }
 
-func (w *Worker) tickStopSign(ctx context.Context) (err error) {
-	ticker := time.NewTicker(time.Second)
+const defaultWorkerTickInterval = time.Second * 10
+
+func (w *Worker) tick(ctx context.Context) (err error) {
+	interval := w.conf.TickInterval
+	if interval <= 0 {
+		interval = defaultWorkerTickInterval
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if t := w.CountdownStopper.ExpiryTime(); !t.IsZero() && time.Now().After(t) {
-				w.TriggerStop()
-				return errors.Wrapf(xsync.ErrCountdownTimerExpired, "wid=%d", w.WID())
+			if err = w.svc.Tick(ctx, w.session); err != nil {
+				return err
 			}
-			// TODO: check black list
 		}
 	}
 }
@@ -231,30 +220,17 @@ func (w *Worker) writePackLoop(ctx context.Context) (err error) {
 	defer close(w.replyChanCompleted)
 
 	w.replyChanStarted.Store(true)
+
 	for pack := range w.replyChan {
 		if err = w.writePack(ctx, pack); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
-func (w *Worker) readPackLoop(ctx context.Context) (err error) {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-w.Stopping():
-			return nil
-		default:
-			if err = w.readPack(ctx); err != nil {
-				return err
-			}
-		}
-	}
-}
-
-func writeNext(ctx context.Context, pk interface{}) (interface{}, error) {
+func writeNext(ctx context.Context, pk any) (any, error) {
 	return pk, nil
 }
 
@@ -264,97 +240,145 @@ func (w *Worker) writePack(ctx context.Context, pack []byte) (err error) {
 		next = w.writeFilter(next)
 	}
 
-	var out interface{}
+	var out any
 	if out, err = next(ctx, pack); err != nil {
 		return
 	}
 	return w.write(out.([]byte))
 }
 
-func (w *Worker) write(pack []byte) (err error) {
-	pack, err = encrypt(w.session, pack)
+func (w *Worker) write(pack []byte) error {
+	pack, err := w.session.Encrypt(pack)
 	if err != nil {
-		return
+		return err
 	}
+
+	packLen := int32(len(pack))
 
 	var buf bytes.Buffer
 
-	err = binary.Write(&buf, binary.BigEndian, uint32(len(pack)))
-	if err != nil {
-		err = errors.Wrap(err, "write packet length failed")
-		return
+	if err = binary.Write(&buf, binary.BigEndian, packLen); err != nil {
+		return errors.Wrap(err, "write packet length failed")
 	}
 
 	if _, err = buf.Write(pack); err != nil {
-		err = errors.Wrap(err, "write packet body failed")
-		return
+		return errors.Wrap(err, "write packet body failed")
 	}
 
 	if _, err = w.conn.Write(buf.Bytes()); err != nil {
-		err = errors.Wrap(err, "send packet failed")
-		return
+		return errors.Wrapf(err, "write packet failed. len=%d", packLen)
 	}
-	return
+
+	return nil
 }
 
-func (w *Worker) readPack(ctx context.Context) (err error) {
-	if err = w.Conn().SetDeadline(time.Now().Add(w.conf.RequestIdleTimeout)); err != nil {
+func (w *Worker) readPackLoop(ctx context.Context) (err error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-w.ClosingStart():
+			return nil
+		default:
+			if err = w.readPack(ctx); err != nil {
+				return err
+			}
+		}
+	}
+}
+func (w *Worker) readPack(ctx context.Context) error {
+	if err := w.Conn().SetDeadline(time.Now().Add(w.conf.RequestIdleTimeout)); err != nil {
 		return errors.Wrap(err, "set conn deadline after handshake failed")
 	}
 
-	var in []byte
-	if in, err = w.read(); err != nil {
-		return
+	in, err := w.read()
+	if err != nil {
+		return err
 	}
 
-	next := func(ctx context.Context, req interface{}) (interface{}, error) {
+	next := func(ctx context.Context, req any) (any, error) {
 		return w.handle(ctx, req)
 	}
+
 	if w.readFilter != nil {
 		next = w.readFilter(next)
 	}
 
-	if _, err = next(ctx, in); err != nil {
-		return
+	if _, err := next(ctx, in); err != nil {
+		return err
 	}
 
-	return
+	return nil
 }
 
-func (w *Worker) read() (buf []byte, err error) {
-	var lenBytes []byte
-	if lenBytes, err = w.reader.ReadFull(xnet.PackLenSize); err != nil {
-		err = errors.Wrap(err, "read packet length failed")
-		return
+func (w *Worker) read() ([]byte, error) {
+	lenBytes, err := w.reader.ReadFull(xnet.PackLenSize)
+	if err != nil {
+		return nil, errors.Wrap(err, "read packet length failed")
 	}
 
 	var packLen int32
-	if err = binary.Read(bytes.NewReader(lenBytes), binary.BigEndian, &packLen); err != nil {
-		return
+	if err := binary.Read(bytes.NewReader(lenBytes), binary.BigEndian, &packLen); err != nil {
+		return nil, errors.Wrap(err, "read packet length failed")
 	}
+
 	if packLen <= 0 {
-		err = errors.New("packet len must greater than 0")
-		return
+		return nil, errors.New("packet len must greater than 0")
 	}
+
 	if packLen > xnet.MaxBodySize {
-		err = errors.Errorf("packet len=%d must less than %d", packLen, xnet.MaxBodySize)
-		return
+		return nil, errors.Errorf("packet len=%d must less than %d", packLen, xnet.MaxBodySize)
 	}
 
-	if buf, err = w.reader.ReadFull(int(packLen)); err != nil {
-		err = errors.Wrapf(err, "read packet body failed. len=%d", packLen)
-		return
+	buf, err := w.reader.ReadFull(int(packLen))
+	if err != nil {
+		return nil, errors.Wrapf(err, "read packet body failed. len=%d", packLen)
 	}
 
-	if buf, err = decrypt(w.session, buf); err != nil {
-		return
+	if buf, err = w.session.Decrypt(buf); err != nil {
+		return nil, err
 	}
-	return
+
+	return buf, nil
 }
 
-func (w *Worker) handle(ctx context.Context, req interface{}) (interface{}, error) {
-	err := w.service.Handle(ctx, w.session, w, req.([]byte))
-	return nil, err
+func (w *Worker) handle(ctx context.Context, req any) (any, error) {
+	return nil, w.svc.Handle(ctx, w.session, w, req.([]byte))
+}
+
+func (w *Worker) Close(ctx context.Context) (err error) {
+	if doCloseErr := w.DoClose(func() {
+		if w.IsStarted() {
+			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+
+			if disConnErr := w.svc.OnDisconnect(ctx, w.session); disConnErr != nil {
+				err = errors.Join(err, disConnErr)
+			}
+		}
+
+		if readerCloseErr := w.reader.Close(); readerCloseErr != nil {
+			err = errors.Join(err, readerCloseErr)
+		}
+
+		w.tunnelManager.close()
+		w.delyClosure.Close()
+
+		close(w.replyChan)
+
+		if w.replyChanStarted.Load() {
+			<-w.replyChanCompleted
+		}
+
+		if connCloseErr := w.conn.Close(); connCloseErr != nil {
+			err = errors.Join(err, connCloseErr)
+			xcontext.SetDeadlineWithContext(ctx, w.conn, fmt.Sprintf("wid=%d", w.WID()))
+		}
+	}); doCloseErr != nil {
+		err = errors.Join(err, doCloseErr)
+	}
+
+	return err
 }
 
 func (w *Worker) IsStarted() bool {
@@ -362,16 +386,20 @@ func (w *Worker) IsStarted() bool {
 }
 
 // SetStopCountDownTime Pass in the current time to set the worker shutdown countdown when the main tunnel is disconnected
-func (w *Worker) SetStopCountDownTime(now time.Time) {
-	w.CountdownStopper.SetExpiryTime(now.Add(w.conf.WaitMainTunnelTimeout))
+func (w *Worker) SetExpiryTime(now time.Time) {
+	w.delyClosure.SetExpiryTime(now.Add(w.conf.WaitMainTunnelTimeout))
+}
+
+func (w *Worker) ExpiryTime() time.Time {
+	return w.delyClosure.ExpiryTime()
+}
+
+func (w *Worker) Reset() {
+	w.delyClosure.Reset()
 }
 
 func (w *Worker) Conn() *net.TCPConn {
 	return w.conn
-}
-
-func (w *Worker) Session() xnet.Session {
-	return w.session
 }
 
 func (w *Worker) WID() uint64 {

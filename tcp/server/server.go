@@ -12,38 +12,46 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/transport"
 	"github.com/go-pantheon/fabrica-kit/ip"
-	xnet "github.com/go-pantheon/fabrica-net"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
-	xcontext "github.com/go-pantheon/fabrica-net/xcontext"
+	"github.com/go-pantheon/fabrica-net/xcontext"
+	"github.com/go-pantheon/fabrica-net/xnet"
+	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
-	"github.com/pkg/errors"
 )
 
-var _ transport.Server = (*Server)(nil)
+func init() {
+	conf.Init()
+}
 
+// Option is a function that configures the server.
 type Option func(o *Server)
 
-type WrapFunc func(ctx context.Context, color string, uid int64) error
+// WrapperFunc is a function that is called after a connection is established or closed.
+type WrapperFunc func(ctx context.Context, uid int64, color string) error
 
+// Bind sets the bind address for the server.
 func Bind(bind string) Option {
 	return func(s *Server) {
 		s.conf.Server.Bind = bind
 	}
 }
 
+// Referer sets the referer for the server.
 func Referer(referer string) Option {
 	return func(s *Server) {
 		s.referer = referer
 	}
 }
 
+// Logger sets the logger for the server.
 func Logger(logger log.Logger) Option {
 	return func(s *Server) {
 		s.logger = logger
 	}
 }
 
+// ReadFilter sets the read filter for the server.
 func ReadFilter(m middleware.Middleware) Option {
 	return func(s *Server) {
 		if s.readFilter == nil {
@@ -54,6 +62,7 @@ func ReadFilter(m middleware.Middleware) Option {
 	}
 }
 
+// WriteFilter sets the write filter for the server.
 func WriteFilter(m middleware.Middleware) Option {
 	return func(s *Server) {
 		if s.writeFilter == nil {
@@ -64,63 +73,74 @@ func WriteFilter(m middleware.Middleware) Option {
 	}
 }
 
-func AfterConnectFunc(f WrapFunc) Option {
+// AfterConnectFunc sets the after connect function for the server.
+func AfterConnectFunc(f WrapperFunc) Option {
 	return func(s *Server) {
 		s.afterConnectFunc = f
 	}
 }
 
-func AfterDisconnectFunc(f WrapFunc) Option {
+// AfterDisconnectFunc sets the after disconnect function for the server.
+func AfterDisconnectFunc(f WrapperFunc) Option {
 	return func(s *Server) {
 		s.afterDisconnectFunc = f
 	}
 }
 
+var _ transport.Server = (*Server)(nil)
+
+// Server is a TCP server.
 type Server struct {
-	xsync.Stoppable
+	xsync.Closable
 
 	conf    *conf.Config
 	logger  log.Logger
 	referer string
 
 	workerSize int
-	listener   net.Listener
-	buckets    *internal.Buckets
+	manager    *internal.WorkerManager
 
-	handler     xnet.Service
+	listener net.Listener
+
+	service     xnet.Service
 	readFilter  middleware.Middleware
 	writeFilter middleware.Middleware
 
-	afterConnectFunc    WrapFunc
-	afterDisconnectFunc WrapFunc
+	afterConnectFunc    WrapperFunc
+	afterDisconnectFunc WrapperFunc
 }
 
-func NewServer(handler xnet.Service, opts ...Option) (*Server, error) {
-	conf.Init()
-
+func NewServer(svc xnet.Service, opts ...Option) (*Server, error) {
 	s := &Server{
-		Stoppable: xsync.NewStopper(conf.Conf.Server.StopTimeout),
-		conf:      conf.Conf,
-		logger:    log.DefaultLogger,
+		Closable: xsync.NewClosure(conf.Conf.Server.StopTimeout),
+		logger:   log.DefaultLogger,
+		conf:     conf.Conf,
 		readFilter: middleware.Chain(
 			recovery.Recovery(),
 		),
 		writeFilter: middleware.Chain(
 			recovery.Recovery(),
 		),
-		handler: handler,
+		service: svc,
 	}
 
 	for _, o := range opts {
 		o(s)
 	}
 
-	s.buckets = internal.NewBuckets(s.conf.Bucket)
+	s.manager = internal.NewWorkerManager(s.conf.Bucket)
 	s.workerSize = s.conf.Server.WorkerSize
+	s.afterConnectFunc = func(ctx context.Context, uid int64, color string) error {
+		return nil
+	}
+	s.afterDisconnectFunc = func(ctx context.Context, uid int64, color string) error {
+		return nil
+	}
 
 	return s, nil
 }
 
+// Start starts the server.
 func (s *Server) Start(ctx context.Context) error {
 	var (
 		listener *net.TCPListener
@@ -129,10 +149,12 @@ func (s *Server) Start(ctx context.Context) error {
 	)
 
 	bind := s.conf.Server.Bind
+
 	if addr, err = net.ResolveTCPAddr("tcp", bind); err != nil {
 		err = errors.Wrapf(err, "resolve bind failed. bind=%s", bind)
 		return err
 	}
+
 	if listener, err = net.ListenTCP("tcp", addr); err != nil {
 		err = errors.Wrapf(err, "listen failed. addr=%s", addr.String())
 		return err
@@ -141,11 +163,12 @@ func (s *Server) Start(ctx context.Context) error {
 	xcontext.SetDeadlineWithContext(ctx, listener, "TcpListener")
 
 	s.listener = listener
-	idGen := &atomic.Uint64{}
-	for i := 0; i < s.workerSize; i++ {
-		workerID := i
-		xsync.GoSafe(fmt.Sprintf("tcp.Server.acceptLoop.%d", workerID), func() error {
-			return s.acceptLoop(ctx, idGen)
+	widGener := &atomic.Uint64{}
+
+	for i := range s.workerSize {
+		aid := i
+		xsync.GoSafe(fmt.Sprintf("tcp.Server.acceptLoop.%d", aid), func() error {
+			return s.acceptLoop(ctx, widGener)
 		})
 	}
 
@@ -153,59 +176,38 @@ func (s *Server) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) Stop(ctx context.Context) (err error) {
-	s.stop()
-	return
-}
-
-func (s *Server) stop() {
-	s.DoStop(func() {
-		s.buckets.Walk(func(w *internal.Worker) (continued bool) {
-			w.TriggerStop()
-			return true
-		})
-		s.buckets.Walk(func(w *internal.Worker) (continued bool) {
-			w.WaitStopped()
-			return true
-		})
-	})
-	log.Info("[tcp.Server] TCP server is closed")
-}
-
-func (s *Server) acceptLoop(ctx context.Context, idGen *atomic.Uint64) error {
+func (s *Server) acceptLoop(ctx context.Context, widGener *atomic.Uint64) error {
 	for {
 		select {
-		case <-s.Stopping():
-			s.WaitStopped()
+		case <-s.ClosingStart():
+			s.WaitClosed()
 			return ctx.Err()
 		case <-ctx.Done():
-			s.WaitStopped()
+			s.WaitClosed()
 			return ctx.Err()
 		default:
-			if err := s.accept(ctx, idGen); err != nil {
+			if err := s.accept(ctx, widGener); err != nil {
 				log.Errorf("[tcp.Server] %+v", err)
 			}
 		}
 	}
 }
 
-func (s *Server) accept(ctx context.Context, idGen *atomic.Uint64) error {
+func (s *Server) accept(ctx context.Context, widGener *atomic.Uint64) error {
 	conn, err := s.listener.(*net.TCPListener).AcceptTCP()
 	if err != nil {
 		return errors.Wrapf(err, "accept failed")
 	}
 
-	conn0 := conn
-	wid := idGen.Add(1)
+	wid := widGener.Add(1)
+
 	xsync.GoSafe(fmt.Sprintf("tcp.Server.serve.%d", wid), func() error {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
-		if err := s.serve(ctx, conn0, wid); err != nil {
-			return errors.WithMessagef(err, "serve failed wid=%d remote=%s local=%s",
-				wid, xcontext.RemoteAddr(conn0), xcontext.LocalAddr(conn0))
-		}
-		return nil
+
+		return s.serve(ctx, conn, wid)
 	})
+
 	return nil
 }
 
@@ -213,9 +215,11 @@ func (s *Server) serve(ctx context.Context, conn *net.TCPConn, wid uint64) error
 	if err := conn.SetKeepAlive(s.conf.Server.KeepAlive); err != nil {
 		return errors.Wrapf(err, "SetKeepAlive failed v=%v	", s.conf.Server.KeepAlive)
 	}
+
 	if err := conn.SetReadBuffer(s.conf.Server.ReadBufSize); err != nil {
 		return errors.Wrapf(err, "SetReadBuffer failed v=%d", s.conf.Server.ReadBufSize)
 	}
+
 	if err := conn.SetWriteBuffer(s.conf.Server.WriteBufSize); err != nil {
 		return errors.Wrapf(err, "SetWriteBuffer failed v=%d", s.conf.Server.WriteBufSize)
 	}
@@ -224,67 +228,90 @@ func (s *Server) serve(ctx context.Context, conn *net.TCPConn, wid uint64) error
 }
 
 func (s *Server) work(ctx context.Context, conn *net.TCPConn, wid uint64) (err error) {
-	w := internal.NewWorker(wid, conn, s.logger, s.conf.Worker, s.referer, s.readFilter, s.writeFilter, s.handler)
+	w := internal.NewWorker(wid, conn, s.logger, s.conf.Worker, s.referer, s.readFilter, s.writeFilter, s.service)
 
 	defer func() {
-		if err != nil {
-			err = errors.WithMessagef(err, "uid=%d color=%s state=%d", w.UID(), w.Color(), w.Status())
+		if closeErr := w.Close(ctx); closeErr != nil {
+			err = errors.Join(err, closeErr)
 		}
 
-		w.Stop(ctx)
-		if s.afterDisconnectFunc != nil {
-			if err = s.afterDisconnectFunc(ctx, w.Color(), w.UID()); err != nil {
-				log.Errorf("[tcp.Server] afterDisconnectFunc failed. wid=%d remote=%s local=%s uid=%d color=%s state=%d %+v",
-					w.WID(), xcontext.RemoteAddr(w.Conn()), xcontext.LocalAddr(w.Conn()), w.UID(), w.Color(), w.Status(), err)
-			}
+		if aferr := s.afterDisconnectFunc(ctx, w.UID(), w.Color()); aferr != nil {
+			err = errors.Join(err, aferr)
+		}
+
+		if err != nil {
+			err = errors.WithMessagef(err, "wid=%d uid=%d color=%s status=%d remote-addr=%s local-addr=%s",
+				w.WID(), w.UID(), w.Color(), w.Status(),
+				xcontext.RemoteAddr(conn), xcontext.LocalAddr(conn))
 		}
 	}()
 
 	if err = w.Start(ctx); err != nil {
 		return err
 	}
-	if err = s.putBucket(w); err != nil {
-		return err
-	}
-	defer s.buckets.Del(w)
 
-	if s.afterConnectFunc != nil {
-		if err = s.afterConnectFunc(ctx, w.Color(), w.UID()); err != nil {
-			return err
-		}
+	s.addWorker(w)
+	defer s.delWorker(w)
+
+	if err = s.afterConnectFunc(ctx, w.UID(), w.Color()); err != nil {
+		return err
 	}
 
 	return w.Run(ctx)
 }
 
-func (s *Server) putBucket(w *internal.Worker) error {
-	if ow := s.buckets.Put(w); ow != nil {
-		log.Errorf("[tcp.Server] worker is replaced, close old worker. wid=%d remote=%s local=%s uid=%d color=%s "+
-			"old-remote=%s old-local=%s old-color=%s",
-			w.WID(), xcontext.RemoteAddr(w.Conn()), xcontext.LocalAddr(w.Conn()), w.UID(), w.Color(),
-			xcontext.RemoteAddr(ow.Conn()), xcontext.LocalAddr(ow.Conn()), ow.Color())
-		ow.TriggerStop()
+func (s *Server) addWorker(w *internal.Worker) {
+	if ow := s.manager.Put(w); ow != nil {
+		log.Errorf("[tcp.Server] addWorker failed, worker is replaced. wid=%d uid=%d color=%s",
+			ow.WID(), ow.UID(), ow.Color())
+		ow.TriggerClose()
 	}
-	return nil
 }
 
-func (s *Server) Disconnect(ctx context.Context, key uint64) error {
-	w := s.buckets.Worker(key)
+func (s *Server) delWorker(w *internal.Worker) {
+	s.manager.Del(w)
+}
+
+func (s *Server) Stop(ctx context.Context) (err error) {
+	if doCloseErr := s.DoClose(func() {
+		s.manager.Walk(func(w *internal.Worker) (continued bool) {
+			w.TriggerClose()
+			return true
+		})
+
+		s.manager.Walk(func(w *internal.Worker) (continued bool) {
+			w.WaitClosed()
+			return true
+		})
+	}); doCloseErr != nil {
+		err = errors.Join(err, doCloseErr)
+	}
+
+	log.Info("[tcp.Server] TCP server is closed")
+
+	return err
+}
+
+func (s *Server) Disconnect(ctx context.Context, wid uint64) error {
+	w := s.manager.Worker(wid)
 	if w == nil {
 		return errors.New("worker not found")
 	}
 
-	w.TriggerStop()
-	w.WaitStopped()
+	w.TriggerClose()
+	w.WaitClosed()
+
 	return nil
 }
 
 func (s *Server) WIDList() []uint64 {
-	ids := make([]uint64, 0, 1024)
-	s.buckets.Walk(func(w *internal.Worker) bool {
+	ids := make([]uint64, 0, 65535)
+
+	s.manager.Walk(func(w *internal.Worker) bool {
 		ids = append(ids, w.WID())
 		return true
 	})
+
 	return ids
 }
 
@@ -293,25 +320,27 @@ func (s *Server) Push(ctx context.Context, uid int64, pack []byte) error {
 		return errors.New("push msg len <= 0")
 	}
 
-	w := s.buckets.GetByUID(uid)
+	w := s.manager.GetByUID(uid)
 	if w == nil {
-		return errors.Errorf("worker not found. uid=%d", uid)
+		return errors.New("worker not found")
 	}
+
 	return w.Push(ctx, pack)
 }
 
-func (s *Server) PushGroup(ctx context.Context, uids []int64, pack []byte) (err error) {
+func (s *Server) BatchPush(ctx context.Context, uids []int64, pack []byte) (err error) {
 	if len(pack) <= 0 {
 		return errors.New("push group msg len <= 0")
 	}
 
-	workers := s.buckets.GetByUIDs(uids)
+	workers := s.manager.GetByUIDs(uids)
 	for _, w := range workers {
-		if err0 := w.Push(ctx, pack); err0 != nil {
-			err = errors.WithMessagef(err0, " uid=%d", w.UID())
+		if pusherr := w.Push(ctx, pack); pusherr != nil {
+			err = errors.JoinUnsimilar(err, pusherr)
 		}
 	}
-	return
+
+	return nil
 }
 
 func (s *Server) Broadcast(ctx context.Context, pack []byte) (err error) {
@@ -319,13 +348,14 @@ func (s *Server) Broadcast(ctx context.Context, pack []byte) (err error) {
 		return errors.New("broadcast msg len <= 0")
 	}
 
-	s.buckets.Walk(func(w *internal.Worker) bool {
-		if err0 := w.Push(ctx, pack); err0 != nil {
-			err = errors.WithMessagef(err0, " uid=%d", w.UID())
+	s.manager.Walk(func(w *internal.Worker) bool {
+		if pusherr := w.Push(ctx, pack); pusherr != nil {
+			err = errors.JoinUnsimilar(err, pusherr)
 		}
 		return true
 	})
-	return
+
+	return nil
 }
 
 func (s *Server) Endpoint() (string, error) {
@@ -333,5 +363,6 @@ func (s *Server) Endpoint() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return fmt.Sprintf("tcp://%s", addr), nil
 }

@@ -1,3 +1,5 @@
+// Package bufreader provides a buffered reader with automatic buffer management
+// and memory pooling for efficient reuse of buffers.
 package bufreader
 
 import (
@@ -6,23 +8,26 @@ import (
 )
 
 var (
-	pool                      *SyncPool
+	pool *syncPool
+	// ErrBufReaderAlreadyClosed is returned when the reader is already closed
 	ErrBufReaderAlreadyClosed = errors.New("bufreader.Reader already closed")
-	ErrBufReaderSize          = errors.New("bufreader.Reader size error")
+	// ErrBufReaderSize is returned when the reader size is invalid
+	ErrBufReaderSize = errors.New("bufreader.Reader size error")
 )
 
 func init() {
-	var err error
-	if pool, err = NewSyncPool(1024, 65536, 4); err != nil {
+	if err := InitReaderPool([]int{1024, 4096, 16384, 65536}); err != nil {
 		panic("failed to initialize slab pool: " + err.Error())
 	}
 }
 
-func InitReaderPool(min, max, factor int) error {
-	var err error
-	if pool, err = NewSyncPool(min, max, factor); err != nil {
+func InitReaderPool(thresholds []int) error {
+	p, err := newSyncPool(thresholds)
+	if err != nil {
 		return err
 	}
+
+	pool = p
 	return nil
 }
 
@@ -88,11 +93,11 @@ func (r *Reader) ReadFull(n int) ([]byte, error) {
 
 		var extraSpace int
 		switch {
-		case n <= 4096:  // 50% extra for small buffers
+		case n <= 4096: // 50% extra for small buffers
 			extraSpace = n >> 1
 		case n <= 65536: // 25% extra for medium buffers
 			extraSpace = n >> 2
-		default:         // 12.5% extra for large buffers
+		default: // 12.5% extra for large buffers
 			extraSpace = n >> 3
 		}
 
