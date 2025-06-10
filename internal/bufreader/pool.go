@@ -65,7 +65,9 @@ func newSyncPool(thresholds []int) (*syncPool, error) {
 				size = thresholds[len(thresholds)-1] * 2
 			}
 
-			return make([]byte, size)
+			buf := make([]byte, size)
+
+			return &buf
 		}
 	}
 
