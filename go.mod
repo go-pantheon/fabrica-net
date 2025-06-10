@@ -6,12 +6,12 @@ require (
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/go-kratos/swagger-api v1.0.1
 	github.com/go-pantheon/fabrica-kit v0.0.6
-	github.com/go-pantheon/fabrica-util v0.0.6
+	github.com/go-pantheon/fabrica-util v0.0.11
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sync v0.13.0
-	google.golang.org/grpc v1.71.1
+	google.golang.org/grpc v1.73.0
 )
 
 require (
