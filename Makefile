@@ -3,7 +3,7 @@ GOBUILD=${GOCMD} build
 
 # golangci-lint
 LINTER := bin/golangci-lint
-TOOLS_SHELL="./hack/tools.sh"
+TOOLS_SHELL="./.hack/tools.sh"
 
 $(LINTER):
 	curl -SL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.1.1
@@ -24,15 +24,20 @@ test:
 vet:
 	go vet ./...
 
+.PHONY: lint
+# Run lint
+lint:
+	golangci-lint run ./...
+
 .PHONY: license-check
 # Check licenses of dependencies
 license-check:
-	./hack/licenses-check
+	./.hack/licenses-check
 
 .PHONY: license-report
 # Generate license report
 license-report:
-	./hack/licenses-generate
+	./.hack/licenses-generate
 .PHONY: test-coverage
 
 # Show help

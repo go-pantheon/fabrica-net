@@ -14,12 +14,12 @@ PROJECT_HOME=$(
 		pwd
 )
 
-source "${PROJECT_HOME}/hack/util.sh"
+source "${PROJECT_HOME}/.hack/util.sh"
 
 LINTER=${PROJECT_HOME}/bin/golangci-lint
 LINTER_CONFIG=${PROJECT_HOME}/.golangci.yml
-FAILURE_FILE=${PROJECT_HOME}/hack/.lintcheck_failures
-IGNORED_FILE=${PROJECT_HOME}/hack/.test_ignored_files
+FAILURE_FILE=${PROJECT_HOME}/.hack/.lintcheck_failures
+IGNORED_FILE=${PROJECT_HOME}/.hack/.test_ignored_files
 
 all_modules=$(util::find_modules)
 failing_modules=()

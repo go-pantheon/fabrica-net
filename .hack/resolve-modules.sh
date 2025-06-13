@@ -13,9 +13,9 @@ PROJECT_HOME=$(
 		pwd
 )
 
-source "${PROJECT_HOME}/hack/util.sh"
+source "${PROJECT_HOME}/.hack/util.sh"
 
-FAILURE_FILE=${PROJECT_HOME}/hack/.lintcheck_failures
+FAILURE_FILE=${PROJECT_HOME}/.hack/.lintcheck_failures
 
 all_modules=$(util::find_modules)
 failing_modules=()

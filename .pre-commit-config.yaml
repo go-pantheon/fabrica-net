@@ -24,7 +24,7 @@ repos:
       - id: license-check
         name: Check for license compliance
         description: Ensures all dependencies use approved licenses
-        entry: hack/pre-commit-license-check
+        entry: ./.hack/pre-commit-license-check
         language: script
         pass_filenames: false
         stages: [commit]
