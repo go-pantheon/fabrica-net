@@ -83,8 +83,6 @@ func init() {
 
 // Init init config.
 func Init() {
-	flag.Parse()
-
 	env := Env{
 		Region:    region,
 		Zone:      zone,

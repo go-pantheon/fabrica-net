@@ -17,9 +17,7 @@ type Session interface {
 	SetClientIP(ip string)
 
 	CSIndex() int64
-	SCIndex() int64
 	IncreaseCSIndex() int64
-	IncreaseSCIndex() int64
 }
 
 // Cryptor is the interface for the cryptor.
@@ -41,9 +39,7 @@ type session struct {
 	color     string
 	status    int64
 	startTime int64
-
-	csIndex *indexInfo
-	scIndex *indexInfo
+	csIndex   *indexInfo
 }
 
 // DefaultSession creates a new session with default values.
@@ -51,7 +47,6 @@ func DefaultSession() Session {
 	return &session{
 		Cryptor: NewNoCryptor(),
 		csIndex: newIndexInfo(0),
-		scIndex: newIndexInfo(1),
 	}
 }
 
@@ -71,7 +66,6 @@ func NewSession(userId int64, sid int64, st int64, encryptor Cryptor, color stri
 		serverID:  sid,
 		startTime: st,
 		csIndex:   newIndexInfo(0),
-		scIndex:   newIndexInfo(1),
 	}
 
 	return s
@@ -83,14 +77,6 @@ func (s *session) IncreaseCSIndex() int64 {
 
 func (s *session) CSIndex() int64 {
 	return s.csIndex.Load()
-}
-
-func (s *session) IncreaseSCIndex() int64 {
-	return s.scIndex.Increase()
-}
-
-func (s *session) SCIndex() int64 {
-	return s.scIndex.Load()
 }
 
 func (s *session) StartTime() int64 {

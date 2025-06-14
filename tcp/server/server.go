@@ -19,10 +19,6 @@ import (
 	"github.com/go-pantheon/fabrica-util/xsync"
 )
 
-func init() {
-	conf.Init()
-}
-
 // Option is a function that configures the server.
 type Option func(o *Server)
 
