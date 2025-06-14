@@ -29,7 +29,9 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.resolve-modules.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout
+        uses: actions/checkout@v4
+
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:
