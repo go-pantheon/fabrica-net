@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/go-kratos/swagger-api v1.0.1
-	github.com/go-pantheon/fabrica-util v0.0.17
+	github.com/go-pantheon/fabrica-util v0.0.18
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sync v0.15.0
@@ -35,6 +35,7 @@ require (
 	github.com/rakyll/statik v0.1.7 // indirect
 	go.opentelemetry.io/otel v1.36.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.36.0 // indirect
+	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
