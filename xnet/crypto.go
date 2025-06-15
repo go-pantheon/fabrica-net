@@ -1,7 +1,9 @@
 // Package xnet provides the network layer for the fabrica-net.
 package xnet
 
-import "github.com/go-pantheon/fabrica-util/security/aes"
+import (
+	"github.com/go-pantheon/fabrica-util/security/aes"
+)
 
 var _ Cryptor = (*cryptor)(nil)
 
@@ -11,21 +13,8 @@ type cryptor struct {
 	aes     *aes.Cipher
 }
 
-// NewNoCryptor creates a new no cryptor.
-func NewNoCryptor() Cryptor {
-	return &cryptor{
-		encrypt: false,
-		key:     []byte{},
-		aes:     nil,
-	}
-}
-
 // NewCryptor creates a new cryptor.
-func NewCryptor(encrypt bool, key []byte) (Cryptor, error) {
-	if !encrypt {
-		return NewNoCryptor(), nil
-	}
-
+func NewCryptor(key []byte) (Cryptor, error) {
 	aes, err := aes.NewAESCipher(key)
 	if err != nil {
 		return nil, err
@@ -60,4 +49,13 @@ func (c *cryptor) Decrypt(data []byte) ([]byte, error) {
 
 func (c *cryptor) Key() []byte {
 	return c.key
+}
+
+// NewUnCryptor creates a new uncryptor.
+func NewUnCryptor() Cryptor {
+	return &cryptor{
+		encrypt: false,
+		key:     []byte{},
+		aes:     nil,
+	}
 }

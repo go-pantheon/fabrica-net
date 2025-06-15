@@ -30,6 +30,7 @@ Some packages may only be included on certain architectures or operating systems
  - [github.com/prometheus/client_model/go](https://pkg.go.dev/github.com/prometheus/client_model/go) ([Apache-2.0](https://github.com/prometheus/client_model/blob/v0.6.2/LICENSE))
  - [github.com/prometheus/common](https://pkg.go.dev/github.com/prometheus/common) ([Apache-2.0](https://github.com/prometheus/common/blob/v0.64.0/LICENSE))
  - [github.com/rakyll/statik/fs](https://pkg.go.dev/github.com/rakyll/statik/fs) ([Apache-2.0](https://github.com/rakyll/statik/blob/v0.1.7/LICENSE))
+ - [golang.org/x/crypto/curve25519](https://pkg.go.dev/golang.org/x/crypto/curve25519) ([BSD-3-Clause](https://cs.opensource.google/go/x/crypto/+/v0.39.0:LICENSE))
  - [golang.org/x/net](https://pkg.go.dev/golang.org/x/net) ([BSD-3-Clause](https://cs.opensource.google/go/x/net/+/v0.41.0:LICENSE))
  - [golang.org/x/sync/errgroup](https://pkg.go.dev/golang.org/x/sync/errgroup) ([BSD-3-Clause](https://cs.opensource.google/go/x/sync/+/v0.15.0:LICENSE))
  - [golang.org/x/sys/unix](https://pkg.go.dev/golang.org/x/sys/unix) ([BSD-3-Clause](https://cs.opensource.google/go/x/sys/+/v0.33.0:LICENSE))

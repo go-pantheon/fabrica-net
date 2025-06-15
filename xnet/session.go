@@ -6,6 +6,7 @@ import (
 
 type Session interface {
 	Cryptor
+	ECDHable
 
 	UID() int64
 	SID() int64
@@ -28,10 +29,17 @@ type Cryptor interface {
 	Decrypt(data []byte) ([]byte, error)
 }
 
+type ECDHable interface {
+	ClientPublicKey() []byte
+	ServerPublicKey() []byte
+	SharedKey() []byte
+}
+
 var _ Session = (*session)(nil)
 
 type session struct {
 	Cryptor
+	ECDHable
 
 	userID    int64
 	serverID  int64
@@ -45,8 +53,9 @@ type session struct {
 // DefaultSession creates a new session with default values.
 func DefaultSession() Session {
 	return &session{
-		Cryptor: NewNoCryptor(),
-		csIndex: newIndexInfo(0),
+		Cryptor:  NewUnCryptor(),
+		ECDHable: NewUnECDH(),
+		csIndex:  newIndexInfo(0),
 	}
 }
 
@@ -57,9 +66,10 @@ func DefaultSession() Session {
 // st: the start time of the session.
 // encryptor: the encryptor of the session.
 // color: the color of the session.
-func NewSession(userId int64, sid int64, st int64, encryptor Cryptor, color string, status int64) Session {
+func NewSession(userId int64, sid int64, st int64, encryptor Cryptor, ecdh ECDHable, color string, status int64) Session {
 	s := &session{
 		Cryptor:   encryptor,
+		ECDHable:  ecdh,
 		userID:    userId,
 		color:     color,
 		status:    status,

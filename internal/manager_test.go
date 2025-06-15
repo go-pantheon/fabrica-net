@@ -685,6 +685,6 @@ func testConcurrentWalk(t *testing.T, bs *WorkerManager, workers []*Worker, numG
 func newTestWorker(id uint64, uid int64) *Worker {
 	return &Worker{
 		id:      id,
-		session: xnet.NewSession(uid, 0, 0, xnet.NewNoCryptor(), "", 0),
+		session: xnet.NewSession(uid, 0, 0, xnet.NewUnCryptor(), xnet.NewUnECDH(), "", 0),
 	}
 }
