@@ -129,7 +129,7 @@ func (c *Client) readPackLoop() error {
 }
 
 func (c *Client) read() (buf []byte, err error) {
-	lb, err := c.reader.ReadFull(xnet.PackLenSize)
+	lb, err := c.reader.ReadFull(xnet.PacketLenSize)
 	if err != nil {
 		return nil, errors.Wrapf(err, "read pack len failed")
 	}
@@ -140,6 +140,8 @@ func (c *Client) read() (buf []byte, err error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "parse pack len failed")
 	}
+
+	packLen -= xnet.PacketLenSize
 
 	buf, err = c.reader.ReadFull(int(packLen))
 	if err != nil {
@@ -152,7 +154,7 @@ func (c *Client) read() (buf []byte, err error) {
 func (c *Client) write(pack []byte) (err error) {
 	var buf bytes.Buffer
 
-	packLen := int32(len(pack))
+	packLen := int32(xnet.PacketLenSize + len(pack))
 	err = binary.Write(&buf, binary.BigEndian, packLen)
 
 	if err != nil {

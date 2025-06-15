@@ -258,7 +258,7 @@ func (w *Worker) write(pack []byte) error {
 		return err
 	}
 
-	packLen := int32(len(pack))
+	packLen := int32(xnet.PacketLenSize + len(pack))
 
 	var buf bytes.Buffer
 
@@ -302,7 +302,7 @@ func (w *Worker) readPack(ctx context.Context) error {
 	}
 
 	next := func(ctx context.Context, req any) (any, error) {
-		return w.handle(ctx, req)
+		return nil, w.svc.Handle(ctx, w.session, w, req.([]byte))
 	}
 
 	if w.readFilter != nil {
@@ -317,7 +317,7 @@ func (w *Worker) readPack(ctx context.Context) error {
 }
 
 func (w *Worker) read() ([]byte, error) {
-	lenBytes, err := w.reader.ReadFull(xnet.PackLenSize)
+	lenBytes, err := w.reader.ReadFull(xnet.PacketLenSize)
 	if err != nil {
 		return nil, errors.Wrap(err, "read packet length failed")
 	}
@@ -327,9 +327,11 @@ func (w *Worker) read() ([]byte, error) {
 		return nil, errors.Wrap(err, "read packet length failed")
 	}
 
-	if packLen <= 0 {
+	if packLen <= xnet.PacketLenSize {
 		return nil, errors.New("packet len must greater than 0")
 	}
+
+	packLen -= xnet.PacketLenSize
 
 	if packLen > xnet.MaxBodySize {
 		return nil, errors.Errorf("packet len=%d must less than %d", packLen, xnet.MaxBodySize)
@@ -345,10 +347,6 @@ func (w *Worker) read() ([]byte, error) {
 	}
 
 	return buf, nil
-}
-
-func (w *Worker) handle(ctx context.Context, req any) (any, error) {
-	return nil, w.svc.Handle(ctx, w.session, w, req.([]byte))
 }
 
 func (w *Worker) Close(ctx context.Context) (err error) {

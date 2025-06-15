@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	// PackLenSize is the size of the packet length.
-	PackLenSize = 4
+	// PacketLenSize is the size of the packet length (int32).
+	PacketLenSize = 4
 	// MaxBodySize is the maximum size of the body.
 	MaxBodySize = int32(1 << 14)
 )
