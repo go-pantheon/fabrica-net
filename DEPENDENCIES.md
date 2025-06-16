@@ -1,6 +1,6 @@
-# go-pantheon fabrica-net dependencies
+# go-pantheon/fabrica-net dependencies
 
-The following open source dependencies are used to build the [go-pantheon/fabrica-net][].
+The following open source dependencies are used to build the [go-pantheon/fabrica-util][].
 
 ## Go Packages
 
@@ -42,4 +42,4 @@ Some packages may only be included on certain architectures or operating systems
  - [gopkg.in/yaml.v2](https://pkg.go.dev/gopkg.in/yaml.v2) ([Apache-2.0](https://github.com/go-yaml/yaml/blob/v2.4.0/LICENSE))
  - [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) ([MIT](https://github.com/go-yaml/yaml/blob/v3.0.1/LICENSE))
 
-[go-pantheon/fabrica-util]: https://github.com/go-pantheon/fabrica-net
+[go-pantheon/fabrica-net]: https://github.com/go-pantheon/fabrica-net
