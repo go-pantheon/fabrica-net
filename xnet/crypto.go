@@ -41,7 +41,10 @@ func (c *cryptor) Encrypt(data Pack) (Pack, error) {
 
 func (c *cryptor) Decrypt(data Pack) (Pack, error) {
 	if !c.encrypt {
-		return data, nil
+		ret := make([]byte, len(data))
+		copy(ret, data)
+
+		return ret, nil
 	}
 
 	return c.aes.Decrypt(data)

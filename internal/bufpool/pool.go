@@ -1,8 +1,9 @@
-package bufreader
+package bufpool
 
 import (
 	"errors"
 	"slices"
+	"sort"
 	"sync"
 )
 
@@ -11,7 +12,7 @@ type Pool interface {
 	Free([]byte)
 }
 
-var _ Pool = (*syncPool)(nil)
+var _ Pool = (*SyncPool)(nil)
 
 var (
 	// ErrInvalidSize when the input size parameters are invalid
@@ -22,21 +23,21 @@ var (
 	ErrThresholdsNotSorted = errors.New("thresholds must be sorted in ascending order")
 )
 
-// syncPool is a sync.Pool based slab allocation memory pool
+// SyncPool is a sync.Pool based slab allocation memory pool
 // Simplified version inspired by multipool structure
-type syncPool struct {
+type SyncPool struct {
 	pools      []sync.Pool // different size memory pools
 	thresholds []int       // size thresholds for each pool
 }
 
-// newSyncPool creates a sync.Pool based slab allocation memory pool
+// New creates a sync.Pool based slab allocation memory pool
 // thresholds: size thresholds for each pool, must be sorted in ascending order
 // For example: []int{256, 1024, 4096} will create 4 pools:
 // - Pool 0: size <= 256 bytes
 // - Pool 1: size > 256 and <= 1024 bytes
 // - Pool 2: size > 1024 and <= 4096 bytes
 // - Pool 3: size > 4096 bytes
-func newSyncPool(thresholds []int) (*syncPool, error) {
+func New(thresholds []int) (*SyncPool, error) {
 	if len(thresholds) == 0 {
 		return nil, ErrThresholdsRequired
 	}
@@ -71,18 +72,20 @@ func newSyncPool(thresholds []int) (*syncPool, error) {
 		}
 	}
 
-	return &syncPool{
+	return &SyncPool{
 		pools:      pools,
 		thresholds: slices.Clone(thresholds),
 	}, nil
 }
 
 // getPoolIndex returns the appropriate pool index for the given size
-func (pool *syncPool) getPoolIndex(size int) int {
-	for i, threshold := range pool.thresholds {
-		if size <= threshold {
-			return i
-		}
+func (pool *SyncPool) getPoolIndex(size int) int {
+	index := sort.Search(len(pool.thresholds), func(i int) bool {
+		return pool.thresholds[i] >= size
+	})
+
+	if index < len(pool.thresholds) {
+		return index
 	}
 
 	return len(pool.thresholds) // largest pool
@@ -90,7 +93,7 @@ func (pool *syncPool) getPoolIndex(size int) int {
 
 // Alloc allocates a []byte from the internal slab class
 // if there is no free block, it will create a new one
-func (pool *syncPool) Alloc(size int) []byte {
+func (pool *SyncPool) Alloc(size int) []byte {
 	if size <= 0 {
 		return make([]byte, 0)
 	}
@@ -107,12 +110,13 @@ func (pool *syncPool) Alloc(size int) []byte {
 }
 
 // Free frees the []byte allocated from Pool.Alloc
-func (pool *syncPool) Free(mem []byte) {
-	if len(mem) == 0 {
+func (pool *SyncPool) Free(mem []byte) {
+	size := cap(mem)
+
+	if size < pool.thresholds[0] {
 		return
 	}
 
-	size := cap(mem)
 	poolIndex := pool.getPoolIndex(size)
 
 	// Reset the slice to avoid memory leaks
@@ -126,11 +130,11 @@ func (pool *syncPool) Free(mem []byte) {
 }
 
 // ClassCount returns the number of memory pool classes
-func (pool *syncPool) ClassCount() int {
+func (pool *SyncPool) ClassCount() int {
 	return len(pool.pools)
 }
 
 // Thresholds returns a copy of the size thresholds
-func (pool *syncPool) Thresholds() []int {
+func (pool *SyncPool) Thresholds() []int {
 	return slices.Clone(pool.thresholds)
 }

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-pantheon/fabrica-net/internal/bufreader"
 	"github.com/go-pantheon/fabrica-net/internal/codec"
 	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/xnet"
@@ -29,6 +28,12 @@ func Bind(bind string) Option {
 	}
 }
 
+func Cryptor(cryptor xnet.Cryptor) Option {
+	return func(s *Client) {
+		s.cryptor = cryptor
+	}
+}
+
 type Client struct {
 	xsync.Closable
 
@@ -36,8 +41,10 @@ type Client struct {
 	bind string
 
 	conn   *net.TCPConn
-	reader *bufreader.Reader
+	reader *bufio.Reader
 	writer *bufio.Writer
+
+	cryptor xnet.Cryptor
 
 	receivedPackChan chan xnet.Pack
 }
@@ -46,6 +53,7 @@ func NewClient(id int64, opts ...Option) *Client {
 	c := &Client{
 		Closable: xsync.NewClosure(time.Second * 10),
 		Id:       id,
+		cryptor:  xnet.NewUnCryptor(),
 	}
 
 	for _, o := range opts {
@@ -70,7 +78,7 @@ func (c *Client) Start(ctx context.Context) (err error) {
 
 	xcontext.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", c.Id))
 
-	c.reader = bufreader.NewReader(conn, 4096)
+	c.reader = bufio.NewReader(conn)
 	c.writer = bufio.NewWriter(conn)
 	c.conn = conn
 
@@ -105,13 +113,11 @@ func (c *Client) receive(ctx context.Context) error {
 
 func (c *Client) stop() {
 	if doCloseErr := c.DoClose(func() {
-		if c.reader != nil {
-			if err := c.reader.Close(); err != nil {
-				log.Errorf("[tcp.Client] cli=%d bufreader close failed", c.Id)
-			}
-		}
-
 		close(c.receivedPackChan)
+
+		if err := c.writer.Flush(); err != nil {
+			log.Errorf("[tcp.Client] client is closed. id=%d err=%v", c.Id, err)
+		}
 
 		log.Infof("[tcp.Client] client is closed. id=%d", c.Id)
 	}); doCloseErr != nil {
@@ -121,8 +127,14 @@ func (c *Client) stop() {
 
 func (c *Client) readPackLoop() error {
 	for {
-		pack, err := codec.BufDecode(c.reader)
+		pack, free, err := codec.Decode(c.reader)
 		if err != nil {
+			return err
+		}
+
+		defer free()
+
+		if pack, err = c.cryptor.Decrypt(pack); err != nil {
 			return err
 		}
 
@@ -131,6 +143,10 @@ func (c *Client) readPackLoop() error {
 }
 
 func (c *Client) Send(pack xnet.Pack) (err error) {
+	if pack, err = c.cryptor.Encrypt(pack); err != nil {
+		return err
+	}
+
 	return codec.Encode(c.writer, pack)
 }
 

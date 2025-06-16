@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/go-pantheon/fabrica-net/internal/bufreader"
 	"github.com/go-pantheon/fabrica-util/xsync"
 )
 
@@ -27,5 +26,4 @@ type Pack []byte
 type StreamFrameCodec interface {
 	Encode(io.Writer, Pack) error
 	Decode(io.Reader) (Pack, error)
-	BufDecode(*bufreader.Reader) (Pack, error)
 }

@@ -1,4 +1,4 @@
-package bufreader
+package bufpool
 
 import (
 	"fmt"
@@ -14,16 +14,16 @@ func TestNewSyncPool(t *testing.T) {
 
 	// Test valid thresholds
 	thresholds := []int{256, 1024, 4096}
-	pool, err := newSyncPool(thresholds)
+	pool, err := New(thresholds)
 	require.NoError(t, err)
 	assert.Equal(t, pool.ClassCount(), 4) // 3 thresholds + 1 overflow pool
 
 	// Test empty thresholds
-	_, err = newSyncPool([]int{})
+	_, err = New([]int{})
 	assert.ErrorIs(t, err, ErrThresholdsRequired)
 
 	// Test unsorted thresholds
-	_, err = newSyncPool([]int{1024, 256, 4096})
+	_, err = New([]int{1024, 256, 4096})
 	assert.ErrorIs(t, err, ErrThresholdsNotSorted)
 }
 
@@ -31,7 +31,7 @@ func TestPoolIndex(t *testing.T) {
 	t.Parallel()
 
 	thresholds := []int{256, 1024, 4096}
-	pool, _ := newSyncPool(thresholds)
+	pool, _ := New(thresholds)
 
 	tests := []struct {
 		size     int
@@ -60,7 +60,7 @@ func TestSimpleAllocFree(t *testing.T) {
 	t.Parallel()
 
 	thresholds := []int{256, 1024, 4096}
-	pool, err := newSyncPool(thresholds)
+	pool, err := New(thresholds)
 	require.NoError(t, err)
 
 	// Test allocation of different sizes
@@ -100,7 +100,7 @@ func TestSimpleConcurrent(t *testing.T) {
 	t.Parallel()
 
 	thresholds := []int{256, 1024, 4096}
-	pool, err := newSyncPool(thresholds)
+	pool, err := New(thresholds)
 	require.NoError(t, err)
 
 	const (
@@ -137,7 +137,7 @@ func TestSimpleConcurrent(t *testing.T) {
 
 func BenchmarkSimplePool(b *testing.B) {
 	thresholds := []int{256, 1024, 4096, 16384}
-	pool, _ := newSyncPool(thresholds)
+	pool, _ := New(thresholds)
 
 	b.ResetTimer()
 

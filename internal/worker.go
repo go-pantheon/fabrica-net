@@ -11,7 +11,6 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-pantheon/fabrica-net/conf"
-	"github.com/go-pantheon/fabrica-net/internal/bufreader"
 	"github.com/go-pantheon/fabrica-net/internal/codec"
 	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/xnet"
@@ -27,7 +26,7 @@ type Worker struct {
 
 	id      uint64
 	conn    net.Conn
-	reader  *bufreader.Reader
+	reader  *bufio.Reader
 	writer  *bufio.Writer
 	started atomic.Bool
 	session xnet.Session
@@ -71,7 +70,7 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worke
 
 	w.session = xnet.DefaultSession()
 
-	w.reader = bufreader.NewReader(conn, conf.ReaderBufSize)
+	w.reader = bufio.NewReader(conn)
 	w.writer = bufio.NewWriter(conn)
 
 	return w
@@ -95,18 +94,19 @@ func (w *Worker) Start(ctx context.Context) (err error) {
 func (w *Worker) handshake(ctx context.Context) error {
 	var (
 		ss  xnet.Session
-		in  xnet.Pack
 		out xnet.Pack
-		err error
 	)
 
-	if err = w.Conn().SetDeadline(time.Now().Add(w.conf.HandshakeTimeout)); err != nil {
+	if err := w.Conn().SetDeadline(time.Now().Add(w.conf.HandshakeTimeout)); err != nil {
 		return errors.Wrap(err, "set conn deadline before handshake failed")
 	}
 
-	if in, err = codec.BufDecode(w.reader); err != nil {
+	in, free, err := codec.Decode(w.reader)
+	if err != nil {
 		return err
 	}
+
+	defer free()
 
 	if out, ss, err = w.svc.Auth(ctx, in); err != nil {
 		return err
@@ -277,10 +277,12 @@ func (w *Worker) read(ctx context.Context) error {
 		return errors.Wrap(err, "set conn deadline after handshake failed")
 	}
 
-	pack, err := codec.BufDecode(w.reader)
+	pack, free, err := codec.Decode(w.reader)
 	if err != nil {
 		return err
 	}
+
+	defer free()
 
 	if pack, err = w.session.Decrypt(pack); err != nil {
 		return err
@@ -312,10 +314,6 @@ func (w *Worker) Close(ctx context.Context) (err error) {
 			}
 		}
 
-		if readerCloseErr := w.reader.Close(); readerCloseErr != nil {
-			err = errors.Join(err, readerCloseErr)
-		}
-
 		w.tunnelManager.close()
 		w.delyClosure.Close()
 
@@ -325,8 +323,8 @@ func (w *Worker) Close(ctx context.Context) (err error) {
 			<-w.replyChanCompleted
 		}
 
-		if err = w.writer.Flush(); err != nil {
-			err = errors.Join(err, err)
+		if writerErr := w.writer.Flush(); writerErr != nil {
+			err = errors.Join(err, writerErr)
 		}
 
 		if connCloseErr := w.conn.Close(); connCloseErr != nil {
