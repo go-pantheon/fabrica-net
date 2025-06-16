@@ -325,6 +325,10 @@ func (w *Worker) Close(ctx context.Context) (err error) {
 			<-w.replyChanCompleted
 		}
 
+		if err = w.writer.Flush(); err != nil {
+			err = errors.Join(err, err)
+		}
+
 		if connCloseErr := w.conn.Close(); connCloseErr != nil {
 			err = errors.Join(err, connCloseErr)
 			xcontext.SetDeadlineWithContext(ctx, w.conn, fmt.Sprintf("wid=%d", w.WID()))
