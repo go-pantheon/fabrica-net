@@ -58,8 +58,7 @@ var _ io.Reader = (*Reader)(nil)
 // Reader implements buffered reading with automatic buffer management
 // and memory pooling for efficient reuse of buffers.
 type Reader struct {
-	reader    io.Reader
-	bufReader *bufio.Reader
+	reader    *bufio.Reader
 	buf       []byte
 	w         int
 	r         int
@@ -68,14 +67,13 @@ type Reader struct {
 
 func NewReader(r io.Reader, initialSize int) *Reader {
 	return &Reader{
-		reader:    r,
-		bufReader: bufio.NewReader(r),
-		buf:       pool.Alloc(initialSize),
+		reader: bufio.NewReader(r),
+		buf:    pool.Alloc(initialSize),
 	}
 }
 
 func (r *Reader) Read(p []byte) (n int, err error) {
-	return r.bufReader.Read(p)
+	return r.reader.Read(p)
 }
 
 func (r *Reader) ReadByte() (n byte, err error) {
