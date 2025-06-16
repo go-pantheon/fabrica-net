@@ -1,6 +1,6 @@
 # go-pantheon/fabrica-net dependencies
 
-The following open source dependencies are used to build the [go-pantheon/fabrica-util][].
+The following open source dependencies are used to build the [go-pantheon/fabrica-net][].
 
 ## Go Packages
 
