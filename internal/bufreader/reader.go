@@ -3,6 +3,8 @@
 package bufreader
 
 import (
+	"bufio"
+	"encoding/binary"
 	"errors"
 	"io"
 )
@@ -16,7 +18,26 @@ var (
 )
 
 func init() {
-	if err := InitReaderPool([]int{1024, 4096, 16384, 65536}); err != nil {
+	minsize := 64
+
+	if err := InitReaderPool([]int{
+		minsize,
+		minsize * 2,
+		minsize * 4,
+		minsize * 8,
+		minsize * 16,
+		minsize * 24,
+		minsize * 32,
+		minsize * 48,
+		minsize * 64,
+		minsize * 96,
+		minsize * 128,
+		minsize * 192,
+		minsize * 256,
+		minsize * 384,
+		minsize * 512,
+		minsize * 768,
+	}); err != nil {
 		panic("failed to initialize slab pool: " + err.Error())
 	}
 }
@@ -32,10 +53,13 @@ func InitReaderPool(thresholds []int) error {
 	return nil
 }
 
+var _ io.Reader = (*Reader)(nil)
+
 // Reader implements buffered reading with automatic buffer management
 // and memory pooling for efficient reuse of buffers.
 type Reader struct {
 	reader    io.Reader
+	bufReader *bufio.Reader
 	buf       []byte
 	w         int
 	r         int
@@ -43,8 +67,15 @@ type Reader struct {
 }
 
 func NewReader(r io.Reader, initialSize int) *Reader {
-	buf := pool.Alloc(initialSize)
-	return &Reader{reader: r, buf: buf}
+	return &Reader{
+		reader:    r,
+		bufReader: bufio.NewReader(r),
+		buf:       pool.Alloc(initialSize),
+	}
+}
+
+func (r *Reader) Read(p []byte) (n int, err error) {
+	return r.bufReader.Read(p)
 }
 
 func (r *Reader) ReadByte() (n byte, err error) {
@@ -73,6 +104,16 @@ func (r *Reader) ReadByte() (n byte, err error) {
 	r.r++
 
 	return
+}
+
+func (r *Reader) ReadUint32() (uint32, error) {
+	if r.unreadBytes() < 4 {
+		if err := r.readAtLeast(4); err != nil {
+			return 0, err
+		}
+	}
+
+	return binary.BigEndian.Uint32(r.buf[r.r : r.r+4]), nil
 }
 
 // ReadFull return a slice with exactly n bytes. It's safe to use the result slice before the next call to any Read method.

@@ -1,15 +1,15 @@
 package tcp
 
 import (
-	"bytes"
+	"bufio"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/internal/bufreader"
+	"github.com/go-pantheon/fabrica-net/internal/codec"
 	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
@@ -37,8 +37,9 @@ type Client struct {
 
 	conn   *net.TCPConn
 	reader *bufreader.Reader
+	writer *bufio.Writer
 
-	receivedPackChan chan []byte
+	receivedPackChan chan xnet.Pack
 }
 
 func NewClient(id int64, opts ...Option) *Client {
@@ -51,7 +52,7 @@ func NewClient(id int64, opts ...Option) *Client {
 		o(c)
 	}
 
-	c.receivedPackChan = make(chan []byte, 1024)
+	c.receivedPackChan = make(chan xnet.Pack, 1024)
 
 	return c
 }
@@ -70,6 +71,7 @@ func (c *Client) Start(ctx context.Context) (err error) {
 	xcontext.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", c.Id))
 
 	c.reader = bufreader.NewReader(conn, 4096)
+	c.writer = bufio.NewWriter(conn)
 	c.conn = conn
 
 	xsync.GoSafe(fmt.Sprintf("tcp.client.id=%d", c.Id), func() error {
@@ -119,7 +121,7 @@ func (c *Client) stop() {
 
 func (c *Client) readPackLoop() error {
 	for {
-		pack, err := c.read()
+		pack, err := codec.BufDecode(c.reader)
 		if err != nil {
 			return err
 		}
@@ -128,56 +130,10 @@ func (c *Client) readPackLoop() error {
 	}
 }
 
-func (c *Client) read() (buf []byte, err error) {
-	lb, err := c.reader.ReadFull(xnet.PacketLenSize)
-	if err != nil {
-		return nil, errors.Wrapf(err, "read pack len failed")
-	}
-
-	var packLen int32
-
-	err = binary.Read(bytes.NewReader(lb), binary.BigEndian, &packLen)
-	if err != nil {
-		return nil, errors.Wrapf(err, "parse pack len failed")
-	}
-
-	packLen -= xnet.PacketLenSize
-
-	buf, err = c.reader.ReadFull(int(packLen))
-	if err != nil {
-		return nil, errors.Wrapf(err, "read pack body failed. len=%d", packLen)
-	}
-
-	return buf, nil
+func (c *Client) Send(pack xnet.Pack) (err error) {
+	return codec.Encode(c.writer, pack)
 }
 
-func (c *Client) write(pack []byte) (err error) {
-	var buf bytes.Buffer
-
-	packLen := int32(xnet.PacketLenSize + len(pack))
-	err = binary.Write(&buf, binary.BigEndian, packLen)
-
-	if err != nil {
-		return errors.Wrapf(err, "write pack len failed. len=%d", packLen)
-	}
-
-	_, err = buf.Write(pack)
-	if err != nil {
-		return errors.Wrapf(err, "write pack body failed. len=%d", packLen)
-	}
-
-	_, err = c.conn.Write(buf.Bytes())
-	if err != nil {
-		return errors.Wrapf(err, "write pack failed. len=%d", packLen)
-	}
-
-	return nil
-}
-
-func (c *Client) Send(pack []byte) (err error) {
-	return c.write(pack)
-}
-
-func (c *Client) Receive() <-chan []byte {
+func (c *Client) Receive() <-chan xnet.Pack {
 	return c.receivedPackChan
 }

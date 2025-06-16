@@ -2,7 +2,9 @@ package xnet
 
 import (
 	"context"
+	"io"
 
+	"github.com/go-pantheon/fabrica-net/internal/bufreader"
 	"github.com/go-pantheon/fabrica-util/xsync"
 )
 
@@ -17,5 +19,13 @@ type Worker interface {
 
 // Pusher is an interface that provides the ability to push data through a tunnel.
 type Pusher interface {
-	Push(ctx context.Context, pack []byte) error
+	Push(ctx context.Context, pack Pack) error
+}
+
+type Pack []byte
+
+type StreamFrameCodec interface {
+	Encode(io.Writer, Pack) error
+	Decode(io.Reader) (Pack, error)
+	BufDecode(*bufreader.Reader) (Pack, error)
 }

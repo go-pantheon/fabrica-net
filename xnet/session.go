@@ -25,8 +25,8 @@ type Session interface {
 type Cryptor interface {
 	Key() []byte
 	IsCrypto() bool
-	Encrypt(data []byte) ([]byte, error)
-	Decrypt(data []byte) ([]byte, error)
+	Encrypt(data Pack) (Pack, error)
+	Decrypt(data Pack) (Pack, error)
 }
 
 type ECDHable interface {

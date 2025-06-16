@@ -1,9 +1,8 @@
 package internal
 
 import (
-	"bytes"
+	"bufio"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"sync/atomic"
@@ -13,6 +12,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal/bufreader"
+	"github.com/go-pantheon/fabrica-net/internal/codec"
 	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
@@ -26,8 +26,9 @@ type Worker struct {
 	xsync.Closable
 
 	id      uint64
-	conn    *net.TCPConn
+	conn    net.Conn
 	reader  *bufreader.Reader
+	writer  *bufio.Writer
 	started atomic.Bool
 	session xnet.Session
 
@@ -44,7 +45,7 @@ type Worker struct {
 
 	replyChanStarted   atomic.Bool
 	replyChanCompleted chan struct{}
-	replyChan          chan []byte
+	replyChan          chan xnet.Pack
 }
 
 func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worker, referer string,
@@ -61,6 +62,7 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worke
 		readFilter:         readFilter,
 		writeFilter:        writeFilter,
 		replyChanCompleted: make(chan struct{}),
+		replyChan:          make(chan xnet.Pack, conf.ReplyChanSize),
 	}
 
 	w.createTunnelFunc = func(ctx context.Context, tp int32, oid int64) (xnet.Tunnel, error) {
@@ -68,8 +70,9 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worke
 	}
 
 	w.session = xnet.DefaultSession()
-	w.replyChan = make(chan []byte, conf.ReplyChanSize)
+
 	w.reader = bufreader.NewReader(conn, conf.ReaderBufSize)
+	w.writer = bufio.NewWriter(conn)
 
 	return w
 }
@@ -92,8 +95,8 @@ func (w *Worker) Start(ctx context.Context) (err error) {
 func (w *Worker) handshake(ctx context.Context) error {
 	var (
 		ss  xnet.Session
-		in  []byte
-		out []byte
+		in  xnet.Pack
+		out xnet.Pack
 		err error
 	)
 
@@ -101,7 +104,7 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return errors.Wrap(err, "set conn deadline before handshake failed")
 	}
 
-	if in, err = w.read(); err != nil {
+	if in, err = codec.BufDecode(w.reader); err != nil {
 		return err
 	}
 
@@ -109,7 +112,7 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return err
 	}
 
-	if err = w.write(out); err != nil {
+	if err = codec.Encode(w.writer, out); err != nil {
 		return err
 	}
 
@@ -141,14 +144,14 @@ func (w *Worker) Run(ctx context.Context) error {
 	})
 	eg.Go(func() error {
 		err := xsync.RunSafe(func() error {
-			return w.writePackLoop(ctx)
+			return w.writeLoop(ctx)
 		})
 
 		return err
 	})
 	eg.Go(func() error {
 		err := xsync.RunSafe(func() error {
-			return w.readPackLoop(ctx)
+			return w.readLoop(ctx)
 		})
 
 		return err
@@ -182,7 +185,7 @@ func (w *Worker) Tunnel(ctx context.Context, mod int32, oid int64) (t xnet.Tunne
 	return w.tunnelManager.createTunnel(ctx, tp, oid, initCap, w.createTunnelFunc)
 }
 
-func (w *Worker) Push(ctx context.Context, out []byte) error {
+func (w *Worker) Push(ctx context.Context, out xnet.Pack) error {
 	if w.OnClosing() {
 		return errors.New("worker is stopping")
 	}
@@ -219,13 +222,13 @@ func (w *Worker) tick(ctx context.Context) (err error) {
 	}
 }
 
-func (w *Worker) writePackLoop(ctx context.Context) (err error) {
+func (w *Worker) writeLoop(ctx context.Context) (err error) {
 	defer close(w.replyChanCompleted)
 
 	w.replyChanStarted.Store(true)
 
 	for pack := range w.replyChan {
-		if err = w.writePack(ctx, pack); err != nil {
+		if err = w.write(ctx, pack); err != nil {
 			return err
 		}
 	}
@@ -237,47 +240,25 @@ func writeNext(ctx context.Context, pk any) (any, error) {
 	return pk, nil
 }
 
-func (w *Worker) writePack(ctx context.Context, pack []byte) (err error) {
+func (w *Worker) write(ctx context.Context, pack xnet.Pack) (err error) {
 	next := writeNext
 	if w.writeFilter != nil {
 		next = w.writeFilter(next)
 	}
 
-	var out any
-
-	if out, err = next(ctx, pack); err != nil {
+	out, err := next(ctx, pack)
+	if err != nil {
 		return
 	}
 
-	return w.write(out.([]byte))
-}
-
-func (w *Worker) write(pack []byte) error {
-	pack, err := w.session.Encrypt(pack)
-	if err != nil {
+	if out, err = w.session.Encrypt(out.(xnet.Pack)); err != nil {
 		return err
 	}
 
-	packLen := int32(xnet.PacketLenSize + len(pack))
-
-	var buf bytes.Buffer
-
-	if err = binary.Write(&buf, binary.BigEndian, packLen); err != nil {
-		return errors.Wrap(err, "write packet length failed")
-	}
-
-	if _, err = buf.Write(pack); err != nil {
-		return errors.Wrap(err, "write packet body failed")
-	}
-
-	if _, err = w.conn.Write(buf.Bytes()); err != nil {
-		return errors.Wrapf(err, "write packet failed. len=%d", packLen)
-	}
-
-	return nil
+	return codec.Encode(w.writer, out.(xnet.Pack))
 }
 
-func (w *Worker) readPackLoop(ctx context.Context) (err error) {
+func (w *Worker) readLoop(ctx context.Context) (err error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -285,68 +266,39 @@ func (w *Worker) readPackLoop(ctx context.Context) (err error) {
 		case <-w.ClosingStart():
 			return nil
 		default:
-			if err = w.readPack(ctx); err != nil {
+			if err = w.read(ctx); err != nil {
 				return err
 			}
 		}
 	}
 }
-func (w *Worker) readPack(ctx context.Context) error {
+func (w *Worker) read(ctx context.Context) error {
 	if err := w.Conn().SetDeadline(time.Now().Add(w.conf.RequestIdleTimeout)); err != nil {
 		return errors.Wrap(err, "set conn deadline after handshake failed")
 	}
 
-	in, err := w.read()
+	pack, err := codec.BufDecode(w.reader)
 	if err != nil {
 		return err
 	}
 
+	if pack, err = w.session.Decrypt(pack); err != nil {
+		return err
+	}
+
 	next := func(ctx context.Context, req any) (any, error) {
-		return nil, w.svc.Handle(ctx, w.session, w, req.([]byte))
+		return nil, w.svc.Handle(ctx, w.session, w, req.(xnet.Pack))
 	}
 
 	if w.readFilter != nil {
 		next = w.readFilter(next)
 	}
 
-	if _, err := next(ctx, in); err != nil {
+	if _, err := next(ctx, pack); err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func (w *Worker) read() ([]byte, error) {
-	lenBytes, err := w.reader.ReadFull(xnet.PacketLenSize)
-	if err != nil {
-		return nil, errors.Wrap(err, "read packet length failed")
-	}
-
-	var packLen int32
-	if err := binary.Read(bytes.NewReader(lenBytes), binary.BigEndian, &packLen); err != nil {
-		return nil, errors.Wrap(err, "read packet length failed")
-	}
-
-	if packLen <= xnet.PacketLenSize {
-		return nil, errors.New("packet len must greater than 0")
-	}
-
-	packLen -= xnet.PacketLenSize
-
-	if packLen > xnet.MaxBodySize {
-		return nil, errors.Errorf("packet len=%d must less than %d", packLen, xnet.MaxBodySize)
-	}
-
-	buf, err := w.reader.ReadFull(int(packLen))
-	if err != nil {
-		return nil, errors.Wrapf(err, "read packet body failed. len=%d", packLen)
-	}
-
-	if buf, err = w.session.Decrypt(buf); err != nil {
-		return nil, err
-	}
-
-	return buf, nil
 }
 
 func (w *Worker) Close(ctx context.Context) (err error) {
@@ -401,7 +353,7 @@ func (w *Worker) Reset() {
 	w.delyClosure.Reset()
 }
 
-func (w *Worker) Conn() *net.TCPConn {
+func (w *Worker) Conn() net.Conn {
 	return w.conn
 }
 

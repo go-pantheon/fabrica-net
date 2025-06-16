@@ -31,7 +31,7 @@ func (c *cryptor) IsCrypto() bool {
 	return c.encrypt
 }
 
-func (c *cryptor) Encrypt(data []byte) ([]byte, error) {
+func (c *cryptor) Encrypt(data Pack) (Pack, error) {
 	if !c.encrypt {
 		return data, nil
 	}
@@ -39,7 +39,7 @@ func (c *cryptor) Encrypt(data []byte) ([]byte, error) {
 	return c.aes.Encrypt(data)
 }
 
-func (c *cryptor) Decrypt(data []byte) ([]byte, error) {
+func (c *cryptor) Decrypt(data Pack) (Pack, error) {
 	if !c.encrypt {
 		return data, nil
 	}
