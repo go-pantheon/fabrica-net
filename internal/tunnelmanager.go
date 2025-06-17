@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/go-pantheon/fabrica-net/xnet"
+	"github.com/go-pantheon/fabrica-util/errors"
 )
 
 type CreateTunnelFunc func(ctx context.Context, tunnelType int32, objectId int64) (xnet.Tunnel, error)
@@ -37,7 +38,7 @@ func (h *tunnelManager) tunnel(tp int32, oid int64) xnet.Tunnel {
 	}
 
 	t, ok := tg[oid]
-	if !ok || t.OnClosing() {
+	if !ok || t.OnStopping() {
 		return nil
 	}
 
@@ -55,7 +56,7 @@ func (h *tunnelManager) createTunnel(ctx context.Context, tp int32, oid int64, i
 	}
 
 	t, ok := tg[oid]
-	if ok && !t.OnClosing() {
+	if ok && !t.OnStopping() {
 		return t, nil
 	}
 
@@ -69,21 +70,19 @@ func (h *tunnelManager) createTunnel(ctx context.Context, tp int32, oid int64, i
 	return t, nil
 }
 
-func (h *tunnelManager) close() {
+func (h *tunnelManager) stop(ctx context.Context) (err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	for _, tg := range h.tunnelGroups {
-		for _, t := range tg {
-			t.TriggerClose()
-		}
-	}
-
 	for tp, tg := range h.tunnelGroups {
-		for _, t := range tg {
-			t.WaitClosed()
-		}
-
 		delete(h.tunnelGroups, tp)
+
+		for _, t := range tg {
+			if stopErr := t.Stop(ctx); stopErr != nil {
+				err = errors.JoinUnsimilar(err, stopErr)
+			}
+		}
 	}
+
+	return nil
 }

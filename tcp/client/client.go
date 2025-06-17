@@ -35,7 +35,7 @@ func Cryptor(cryptor xnet.Cryptor) Option {
 }
 
 type Client struct {
-	xsync.Closable
+	xsync.Stoppable
 
 	Id   int64
 	bind string
@@ -51,9 +51,9 @@ type Client struct {
 
 func NewClient(id int64, opts ...Option) *Client {
 	c := &Client{
-		Closable: xsync.NewClosure(time.Second * 10),
-		Id:       id,
-		cryptor:  xnet.NewUnCryptor(),
+		Stoppable: xsync.NewStopper(time.Second * 10),
+		cryptor:   xnet.NewUnCryptor(),
+		Id:        id,
 	}
 
 	for _, o := range opts {
@@ -90,64 +90,78 @@ func (c *Client) Start(ctx context.Context) (err error) {
 }
 
 func (c *Client) receive(ctx context.Context) error {
-	defer c.stop()
-
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		select {
-		case <-c.CloseTriggered():
-			c.stop()
-			return xsync.ErrGroupIsClosing
+		case <-c.StopTriggered():
+			return xsync.ErrStopByTrigger
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	})
 	eg.Go(func() error {
 		return xsync.RunSafe(func() error {
-			return c.readPackLoop()
+			return c.readPackLoop(ctx)
 		})
 	})
 
 	return eg.Wait()
 }
 
-func (c *Client) stop() {
-	if doCloseErr := c.DoClose(func() {
+func (c *Client) Stop(ctx context.Context) (err error) {
+	if turnOffErr := c.TurnOff(ctx, func(ctx context.Context) {
 		close(c.receivedPackChan)
 
-		if err := c.writer.Flush(); err != nil {
-			log.Errorf("[tcp.Client] client is closed. id=%d err=%v", c.Id, err)
+		if flushErr := c.writer.Flush(); flushErr != nil {
+			err = errors.Join(err, flushErr)
 		}
 
-		log.Infof("[tcp.Client] client is closed. id=%d", c.Id)
-	}); doCloseErr != nil {
-		log.Errorf("[tcp.Client] client is closed. id=%d err=%v", c.Id, doCloseErr)
+		if closeErr := c.conn.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}); turnOffErr != nil {
+		return errors.Join(err, turnOffErr)
 	}
+
+	log.Infof("[tcp.Client] client is closed. id=%d", c.Id)
+
+	return nil
 }
 
-func (c *Client) readPackLoop() error {
+func (c *Client) readPackLoop(ctx context.Context) error {
 	for {
-		pack, free, err := codec.Decode(c.reader)
-		if err != nil {
-			return err
+		select {
+		case <-c.StopTriggered():
+			return xsync.ErrStopByTrigger
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			pack, free, err := codec.Decode(c.conn)
+			if err != nil {
+				return err
+			}
+
+			defer free()
+
+			if pack, err = c.cryptor.Decrypt(pack); err != nil {
+				return err
+			}
+
+			c.receivedPackChan <- pack
 		}
-
-		defer free()
-
-		if pack, err = c.cryptor.Decrypt(pack); err != nil {
-			return err
-		}
-
-		c.receivedPackChan <- pack
 	}
 }
 
 func (c *Client) Send(pack xnet.Pack) (err error) {
+	if c.OnStopping() {
+		return xsync.ErrIsStopped
+	}
+
 	if pack, err = c.cryptor.Encrypt(pack); err != nil {
 		return err
 	}
 
-	return codec.Encode(c.writer, pack)
+	return codec.Encode(c.conn, pack)
 }
 
 func (c *Client) Receive() <-chan xnet.Pack {

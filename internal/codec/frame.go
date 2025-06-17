@@ -13,6 +13,7 @@ var (
 	pool *bufpool.SyncPool
 
 	ErrShortRead      = errors.New("short read")
+	ErrShortWrite     = errors.New("short write")
 	ErrInvalidPackLen = errors.New("invalid pack len")
 )
 
@@ -54,19 +55,24 @@ func InitReaderPool(thresholds []int) error {
 }
 
 func Encode(w io.Writer, pack xnet.Pack) error {
-	if err := binary.Write(w, binary.BigEndian, xnet.PackLenSize+uint32(len(pack))); err != nil {
+	if err := binary.Write(w, binary.BigEndian, xnet.PackLenSize+int32(len(pack))); err != nil {
 		return errors.Wrap(err, "write pack len failed")
 	}
 
-	if _, err := w.Write(pack); err != nil {
+	n, err := w.Write(pack)
+	if err != nil {
 		return errors.Wrapf(err, "write pack failed")
+	}
+
+	if n != len(pack) {
+		return ErrShortWrite
 	}
 
 	return nil
 }
 
 func Decode(r io.Reader) (pack xnet.Pack, free func(), err error) {
-	totalLen, err := readUint32(r)
+	totalLen, err := readInt32(r)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -78,26 +84,31 @@ func Decode(r io.Reader) (pack xnet.Pack, free func(), err error) {
 	return readPack(r, totalLen-xnet.PackLenSize)
 }
 
-func readUint32(r io.Reader) (uint32, error) {
-	buf := pool.Alloc(4)
+func readInt32(r io.Reader) (int32, error) {
+	buf := pool.Alloc(int(xnet.PackLenSize))
 	defer pool.Free(buf)
 
-	if _, err := io.ReadAtLeast(r, buf, 4); err != nil {
-		return 0, err
+	n, err := io.ReadFull(r, buf)
+	if err != nil {
+		return 0, errors.Wrap(err, "read int32 failed")
 	}
 
-	return binary.BigEndian.Uint32(buf), nil
+	if n != int(xnet.PackLenSize) {
+		return 0, ErrShortRead
+	}
+
+	return int32(binary.BigEndian.Uint32(buf)), nil
 }
 
-func readPack(r io.Reader, packLen uint32) (pack xnet.Pack, free func(), err error) {
+func readPack(r io.Reader, packLen int32) (pack xnet.Pack, free func(), err error) {
 	buf := pool.Alloc(int(packLen))
 	free = func() {
 		pool.Free(buf)
 	}
 
-	n, err := r.Read(buf)
+	n, err := io.ReadFull(r, buf)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "read pack failed")
 	}
 
 	if n < int(packLen) {

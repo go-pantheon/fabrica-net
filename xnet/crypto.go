@@ -2,6 +2,8 @@
 package xnet
 
 import (
+	"slices"
+
 	"github.com/go-pantheon/fabrica-util/security/aes"
 )
 
@@ -33,7 +35,7 @@ func (c *cryptor) IsCrypto() bool {
 
 func (c *cryptor) Encrypt(data Pack) (Pack, error) {
 	if !c.encrypt {
-		return data, nil
+		return slices.Clone(data), nil
 	}
 
 	return c.aes.Encrypt(data)
@@ -41,10 +43,7 @@ func (c *cryptor) Encrypt(data Pack) (Pack, error) {
 
 func (c *cryptor) Decrypt(data Pack) (Pack, error) {
 	if !c.encrypt {
-		ret := make([]byte, len(data))
-		copy(ret, data)
-
-		return ret, nil
+		return slices.Clone(data), nil
 	}
 
 	return c.aes.Decrypt(data)

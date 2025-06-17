@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
@@ -19,34 +20,34 @@ import (
 	"github.com/go-pantheon/fabrica-util/xsync"
 )
 
-// Option is a function that configures the server.
 type Option func(o *Server)
 
-// WrapperFunc is a function that is called after a connection is established or closed.
 type WrapperFunc func(ctx context.Context, uid int64, color string) error
 
-// Bind sets the bind address for the server.
 func Bind(bind string) Option {
 	return func(s *Server) {
-		s.conf.Server.Bind = bind
+		s.bind = bind
 	}
 }
 
-// Referer sets the referer for the server.
+func WithConf(conf conf.Config) Option {
+	return func(s *Server) {
+		s.conf = conf
+	}
+}
+
 func Referer(referer string) Option {
 	return func(s *Server) {
 		s.referer = referer
 	}
 }
 
-// Logger sets the logger for the server.
 func Logger(logger log.Logger) Option {
 	return func(s *Server) {
 		s.logger = logger
 	}
 }
 
-// ReadFilter sets the read filter for the server.
 func ReadFilter(m middleware.Middleware) Option {
 	return func(s *Server) {
 		if s.readFilter == nil {
@@ -58,7 +59,6 @@ func ReadFilter(m middleware.Middleware) Option {
 	}
 }
 
-// WriteFilter sets the write filter for the server.
 func WriteFilter(m middleware.Middleware) Option {
 	return func(s *Server) {
 		if s.writeFilter == nil {
@@ -70,32 +70,34 @@ func WriteFilter(m middleware.Middleware) Option {
 	}
 }
 
-// AfterConnectFunc sets the after connect function for the server.
 func AfterConnectFunc(f WrapperFunc) Option {
 	return func(s *Server) {
 		s.afterConnectFunc = f
 	}
 }
 
-// AfterDisconnectFunc sets the after disconnect function for the server.
 func AfterDisconnectFunc(f WrapperFunc) Option {
 	return func(s *Server) {
 		s.afterDisconnectFunc = f
 	}
 }
 
+const (
+	stopTimeout = time.Second * 30
+)
+
 var _ transport.Server = (*Server)(nil)
 
-// Server is a TCP server.
 type Server struct {
-	xsync.Closable
+	xsync.Stoppable
 
+	bind    string
 	conf    conf.Config
 	logger  log.Logger
 	referer string
 
-	workerSize int
-	manager    *internal.WorkerManager
+	workerSize    int
+	workerManager *internal.WorkerManager
 
 	listener net.Listener
 
@@ -107,11 +109,12 @@ type Server struct {
 	afterDisconnectFunc WrapperFunc
 }
 
-func NewServer(svc xnet.Service, opts ...Option) (*Server, error) {
+func NewServer(bind string, svc xnet.Service, opts ...Option) (*Server, error) {
 	s := &Server{
-		Closable: xsync.NewClosure(conf.Conf.Server.StopTimeout),
-		logger:   log.DefaultLogger,
-		conf:     conf.Conf,
+		Stoppable: xsync.NewStopper(stopTimeout),
+		logger:    log.DefaultLogger,
+		bind:      bind,
+		conf:      conf.Default(),
 		readFilter: middleware.Chain(
 			recovery.Recovery(),
 		),
@@ -125,7 +128,7 @@ func NewServer(svc xnet.Service, opts ...Option) (*Server, error) {
 		o(s)
 	}
 
-	s.manager = internal.NewWorkerManager(s.conf.Bucket)
+	s.workerManager = internal.NewWorkerManager(s.conf.Bucket)
 	s.workerSize = s.conf.Server.WorkerSize
 	s.afterConnectFunc = func(ctx context.Context, uid int64, color string) error {
 		return nil
@@ -137,7 +140,6 @@ func NewServer(svc xnet.Service, opts ...Option) (*Server, error) {
 	return s, nil
 }
 
-// Start starts the server.
 func (s *Server) Start(ctx context.Context) error {
 	var (
 		listener *net.TCPListener
@@ -145,10 +147,8 @@ func (s *Server) Start(ctx context.Context) error {
 		err      error
 	)
 
-	bind := s.conf.Server.Bind
-
-	if addr, err = net.ResolveTCPAddr("tcp", bind); err != nil {
-		err = errors.Wrapf(err, "resolve bind failed. bind=%s", bind)
+	if addr, err = net.ResolveTCPAddr("tcp", s.bind); err != nil {
+		err = errors.Wrapf(err, "resolve bind failed. bind=%s", s.bind)
 		return err
 	}
 
@@ -177,11 +177,9 @@ func (s *Server) Start(ctx context.Context) error {
 func (s *Server) acceptLoop(ctx context.Context, widGener *atomic.Uint64) error {
 	for {
 		select {
-		case <-s.ClosingStart():
-			s.WaitClosed()
-			return ctx.Err()
+		case <-s.StopTriggered():
+			return xsync.ErrStopByTrigger
 		case <-ctx.Done():
-			s.WaitClosed()
 			return ctx.Err()
 		default:
 			if err := s.accept(ctx, widGener); err != nil {
@@ -200,9 +198,6 @@ func (s *Server) accept(ctx context.Context, widGener *atomic.Uint64) error {
 	wid := widGener.Add(1)
 
 	xsync.GoSafe(fmt.Sprintf("tcp.Server.serve.%d", wid), func() error {
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
 		return s.serve(ctx, conn, wid)
 	})
 
@@ -210,6 +205,9 @@ func (s *Server) accept(ctx context.Context, widGener *atomic.Uint64) error {
 }
 
 func (s *Server) serve(ctx context.Context, conn *net.TCPConn, wid uint64) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if err := conn.SetKeepAlive(s.conf.Server.KeepAlive); err != nil {
 		return errors.Wrapf(err, "SetKeepAlive failed v=%v	", s.conf.Server.KeepAlive)
 	}
@@ -229,7 +227,7 @@ func (s *Server) work(ctx context.Context, conn *net.TCPConn, wid uint64) (err e
 	w := internal.NewWorker(wid, conn, s.logger, s.conf.Worker, s.referer, s.readFilter, s.writeFilter, s.service)
 
 	defer func() {
-		if closeErr := w.Close(ctx); closeErr != nil {
+		if closeErr := w.Stop(ctx); closeErr != nil {
 			err = errors.Join(err, closeErr)
 		}
 
@@ -248,8 +246,11 @@ func (s *Server) work(ctx context.Context, conn *net.TCPConn, wid uint64) (err e
 		return err
 	}
 
-	s.addWorker(w)
-	defer s.delWorker(w)
+	if err = s.addWorker(ctx, w); err != nil {
+		return err
+	}
+
+	defer s.delWorker(w.WID())
 
 	if err = s.afterConnectFunc(ctx, w.UID(), w.Color()); err != nil {
 		return err
@@ -258,27 +259,25 @@ func (s *Server) work(ctx context.Context, conn *net.TCPConn, wid uint64) (err e
 	return w.Run(ctx)
 }
 
-func (s *Server) addWorker(w *internal.Worker) {
-	if ow := s.manager.Put(w); ow != nil {
-		log.Errorf("[tcp.Server] addWorker failed, worker is replaced. wid=%d uid=%d color=%s",
-			ow.WID(), ow.UID(), ow.Color())
-		ow.TriggerClose()
+func (s *Server) addWorker(ctx context.Context, w *internal.Worker) (err error) {
+	if ow := s.workerManager.Put(w); ow != nil {
+		err = ow.Stop(ctx)
 	}
+
+	return err
 }
 
-func (s *Server) delWorker(w *internal.Worker) {
-	s.manager.Del(w)
+func (s *Server) delWorker(wid uint64) {
+	s.workerManager.Del(wid)
 }
 
 func (s *Server) Stop(ctx context.Context) (err error) {
-	if doCloseErr := s.DoClose(func() {
-		s.manager.Walk(func(w *internal.Worker) (continued bool) {
-			w.TriggerClose()
-			return true
-		})
+	if doCloseErr := s.TurnOff(ctx, func(ctx context.Context) {
+		s.workerManager.Walk(func(w *internal.Worker) (continued bool) {
+			if stopErr := w.Stop(ctx); stopErr != nil {
+				err = errors.JoinUnsimilar(err, stopErr)
+			}
 
-		s.manager.Walk(func(w *internal.Worker) (continued bool) {
-			w.WaitClosed()
 			return true
 		})
 	}); doCloseErr != nil {
@@ -291,21 +290,32 @@ func (s *Server) Stop(ctx context.Context) (err error) {
 }
 
 func (s *Server) Disconnect(ctx context.Context, wid uint64) error {
-	w := s.manager.Worker(wid)
+	if s.OnStopping() {
+		return xsync.ErrIsStopped
+	}
+
+	w := s.workerManager.Worker(wid)
 	if w == nil {
 		return errors.New("worker not found")
 	}
 
-	w.TriggerClose()
-	w.WaitClosed()
+	s.delWorker(wid)
+
+	if closeErr := w.Stop(ctx); closeErr != nil {
+		return closeErr
+	}
 
 	return nil
 }
 
 func (s *Server) WIDList() []uint64 {
+	if s.OnStopping() {
+		return nil
+	}
+
 	ids := make([]uint64, 0, 65535)
 
-	s.manager.Walk(func(w *internal.Worker) bool {
+	s.workerManager.Walk(func(w *internal.Worker) bool {
 		ids = append(ids, w.WID())
 		return true
 	})
@@ -314,11 +324,15 @@ func (s *Server) WIDList() []uint64 {
 }
 
 func (s *Server) Push(ctx context.Context, uid int64, pack []byte) error {
+	if s.OnStopping() {
+		return xsync.ErrIsStopped
+	}
+
 	if len(pack) == 0 {
 		return errors.New("push msg len <= 0")
 	}
 
-	w := s.manager.GetByUID(uid)
+	w := s.workerManager.GetByUID(uid)
 	if w == nil {
 		return errors.New("worker not found")
 	}
@@ -327,11 +341,15 @@ func (s *Server) Push(ctx context.Context, uid int64, pack []byte) error {
 }
 
 func (s *Server) BatchPush(ctx context.Context, uids []int64, pack []byte) (err error) {
+	if s.OnStopping() {
+		return xsync.ErrIsStopped
+	}
+
 	if len(pack) == 0 {
 		return errors.New("push group msg len <= 0")
 	}
 
-	workers := s.manager.GetByUIDs(uids)
+	workers := s.workerManager.GetByUIDs(uids)
 	for _, w := range workers {
 		if pusherr := w.Push(ctx, pack); pusherr != nil {
 			err = errors.JoinUnsimilar(err, pusherr)
@@ -342,11 +360,15 @@ func (s *Server) BatchPush(ctx context.Context, uids []int64, pack []byte) (err 
 }
 
 func (s *Server) Broadcast(ctx context.Context, pack []byte) (err error) {
+	if s.OnStopping() {
+		return xsync.ErrIsStopped
+	}
+
 	if len(pack) == 0 {
 		return errors.New("broadcast msg len <= 0")
 	}
 
-	s.manager.Walk(func(w *internal.Worker) bool {
+	s.workerManager.Walk(func(w *internal.Worker) bool {
 		if pusherr := w.Push(ctx, pack); pusherr != nil {
 			err = errors.JoinUnsimilar(err, pusherr)
 		}
@@ -358,7 +380,7 @@ func (s *Server) Broadcast(ctx context.Context, pack []byte) (err error) {
 }
 
 func (s *Server) Endpoint() (string, error) {
-	addr, err := ip.Extract(s.conf.Server.Bind, s.listener)
+	addr, err := ip.Extract(s.bind, s.listener)
 	if err != nil {
 		return "", err
 	}

@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/go-kratos/swagger-api v1.0.1
-	github.com/go-pantheon/fabrica-util v0.0.19
+	github.com/go-pantheon/fabrica-util v0.0.20
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sync v0.15.0

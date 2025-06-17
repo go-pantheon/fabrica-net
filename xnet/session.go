@@ -2,6 +2,7 @@ package xnet
 
 import (
 	"sync/atomic"
+	"time"
 )
 
 type Session interface {
@@ -53,30 +54,55 @@ type session struct {
 // DefaultSession creates a new session with default values.
 func DefaultSession() Session {
 	return &session{
-		Cryptor:  NewUnCryptor(),
-		ECDHable: NewUnECDH(),
-		csIndex:  newIndexInfo(0),
+		Cryptor:   NewUnCryptor(),
+		ECDHable:  NewUnECDH(),
+		csIndex:   newIndexInfo(0),
+		startTime: time.Now().Unix(),
+	}
+}
+
+type Option func(s *session)
+
+func WithSID(sid int64) Option {
+	return func(s *session) {
+		s.serverID = sid
+	}
+}
+
+func WithEncryptor(encryptor Cryptor) Option {
+	return func(s *session) {
+		s.Cryptor = encryptor
+	}
+}
+
+func WithECDH(ecdh ECDHable) Option {
+	return func(s *session) {
+		s.ECDHable = ecdh
+	}
+}
+
+func WithStartTime(st int64) Option {
+	return func(s *session) {
+		s.startTime = st
 	}
 }
 
 // NewSession creates a new session.
 //
 // userId: the user id of the session.
-// sid: the server id of the session.
-// st: the start time of the session.
-// encryptor: the encryptor of the session.
 // color: the color of the session.
-func NewSession(userId int64, sid int64, st int64, encryptor Cryptor, ecdh ECDHable, color string, status int64) Session {
-	s := &session{
-		Cryptor:   encryptor,
-		ECDHable:  ecdh,
-		userID:    userId,
-		color:     color,
-		status:    status,
-		serverID:  sid,
-		startTime: st,
-		csIndex:   newIndexInfo(0),
+// status: the status of the session.
+// opts: the options of the session.
+func NewSession(userId int64, color string, status int64, opts ...Option) Session {
+	s := DefaultSession().(*session)
+
+	for _, opt := range opts {
+		opt(s)
 	}
+
+	s.userID = userId
+	s.color = color
+	s.status = status
 
 	return s
 }

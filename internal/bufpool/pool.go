@@ -80,6 +80,16 @@ func New(thresholds []int) (*SyncPool, error) {
 
 // getPoolIndex returns the appropriate pool index for the given size
 func (pool *SyncPool) getPoolIndex(size int) int {
+	if size <= 4 {
+		for i := range pool.thresholds {
+			if pool.thresholds[i] >= size {
+				return i
+			}
+		}
+
+		return len(pool.thresholds)
+	}
+
 	index := sort.Search(len(pool.thresholds), func(i int) bool {
 		return pool.thresholds[i] >= size
 	})

@@ -72,7 +72,7 @@ func TestWorkerManager_BasicOperations(t *testing.T) {
 	assert.Equal(t, w2, got)
 
 	// Test Del
-	bs.Del(w1)
+	bs.Del(w1.WID())
 	got = bs.Worker(w1.WID())
 	assert.Nil(t, got)
 }
@@ -229,10 +229,7 @@ func BenchmarkWorkerManager_Operations(b *testing.B) {
 }
 
 func BenchmarkWorkerManager_Concurrent(b *testing.B) {
-	conf.Init()
-
-	c := conf.Conf.Bucket
-	bs := NewWorkerManager(c)
+	bs := NewWorkerManager(conf.Default().Bucket)
 
 	// Prepare test data
 	workers := make([]*Worker, 1000)
@@ -641,8 +638,8 @@ func testConcurrentDel(t *testing.T, bs *WorkerManager, workers []*Worker, numGo
 			defer wg.Done()
 
 			for j := range numOperations {
-				workerID := (routineID*numOperations + j) % len(workers)
-				bs.Del(workers[workerID])
+				workerID := uint64((routineID*numOperations + j) % len(workers))
+				bs.Del(workerID)
 			}
 		}(i)
 	}
@@ -685,6 +682,6 @@ func testConcurrentWalk(t *testing.T, bs *WorkerManager, workers []*Worker, numG
 func newTestWorker(id uint64, uid int64) *Worker {
 	return &Worker{
 		id:      id,
-		session: xnet.NewSession(uid, 0, 0, xnet.NewUnCryptor(), xnet.NewUnECDH(), "", 0),
+		session: xnet.NewSession(uid, "", 0),
 	}
 }

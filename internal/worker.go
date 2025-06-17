@@ -12,6 +12,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal/codec"
+	"github.com/go-pantheon/fabrica-net/tunnel"
 	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
@@ -22,22 +23,21 @@ import (
 var _ xnet.Worker = (*Worker)(nil)
 
 type Worker struct {
-	xsync.Closable
+	xsync.Stoppable
 
-	id      uint64
-	conn    net.Conn
-	reader  *bufio.Reader
-	writer  *bufio.Writer
-	started atomic.Bool
-	session xnet.Session
+	id        uint64
+	conn      net.Conn
+	reader    *bufio.Reader
+	writer    *bufio.Writer
+	connected atomic.Bool
+	session   xnet.Session
 
 	tunnelManager *tunnelManager
 
 	conf             conf.Worker
+	referer          string
 	svc              xnet.Service
 	createTunnelFunc CreateTunnelFunc
-	delyClosure      xsync.Delayable
-	referer          string
 
 	readFilter  middleware.Middleware
 	writeFilter middleware.Middleware
@@ -50,8 +50,7 @@ type Worker struct {
 func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worker, referer string,
 	readFilter, writeFilter middleware.Middleware, svc xnet.Service) *Worker {
 	w := &Worker{
-		Closable:           xsync.NewClosure(conf.StopTimeout),
-		delyClosure:        xsync.NewDelayer(),
+		Stoppable:          xsync.NewStopper(conf.StopTimeout),
 		tunnelManager:      newTunnelManager(conf.TunnelGroupSize),
 		id:                 wid,
 		conn:               conn,
@@ -65,7 +64,12 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worke
 	}
 
 	w.createTunnelFunc = func(ctx context.Context, tp int32, oid int64) (xnet.Tunnel, error) {
-		return w.svc.CreateTunnel(ctx, w.session, tp, oid, w)
+		at, err := w.svc.CreateAppTunnel(ctx, w.session, tp, oid, w)
+		if err != nil {
+			return nil, err
+		}
+
+		return tunnel.NewTunnel(ctx, w, at), nil
 	}
 
 	w.session = xnet.DefaultSession()
@@ -85,7 +89,7 @@ func (w *Worker) Start(ctx context.Context) (err error) {
 		return err
 	}
 
-	w.started.Store(true)
+	w.connected.Store(true)
 
 	return
 }
@@ -101,7 +105,7 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return errors.Wrap(err, "set conn deadline before handshake failed")
 	}
 
-	in, free, err := codec.Decode(w.reader)
+	in, free, err := codec.Decode(w.conn)
 	if err != nil {
 		return err
 	}
@@ -112,7 +116,7 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return err
 	}
 
-	if err = codec.Encode(w.writer, out); err != nil {
+	if err = codec.Encode(w.conn, out); err != nil {
 		return err
 	}
 
@@ -134,10 +138,8 @@ func (w *Worker) Run(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		select {
-		case <-w.CloseTriggered():
-			return xsync.ErrGroupIsClosing
-		case <-w.delyClosure.Wait():
-			return errors.Wrapf(xsync.ErrDelayerExpired, "wid=%d", w.WID())
+		case <-w.StopTriggered():
+			return xsync.ErrStopByTrigger
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -161,15 +163,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		return err
 	})
 
-	if err := eg.Wait(); err != nil {
-		if errors.Is(err, xsync.ErrGroupIsClosing) {
-			return nil
-		}
-
-		return err
-	}
-
-	return nil
+	return eg.Wait()
 }
 
 func (w *Worker) Tunnel(ctx context.Context, mod int32, oid int64) (t xnet.Tunnel, err error) {
@@ -186,7 +180,7 @@ func (w *Worker) Tunnel(ctx context.Context, mod int32, oid int64) (t xnet.Tunne
 }
 
 func (w *Worker) Push(ctx context.Context, out xnet.Pack) error {
-	if w.OnClosing() {
+	if w.OnStopping() {
 		return errors.New("worker is stopping")
 	}
 
@@ -214,6 +208,8 @@ func (w *Worker) tick(ctx context.Context) (err error) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-w.StopTriggered():
+			return xsync.ErrStopByTrigger
 		case <-ticker.C:
 			if err = w.svc.Tick(ctx, w.session); err != nil {
 				return err
@@ -223,9 +219,9 @@ func (w *Worker) tick(ctx context.Context) (err error) {
 }
 
 func (w *Worker) writeLoop(ctx context.Context) (err error) {
-	defer close(w.replyChanCompleted)
-
 	w.replyChanStarted.Store(true)
+
+	defer close(w.replyChanCompleted)
 
 	for pack := range w.replyChan {
 		if err = w.write(ctx, pack); err != nil {
@@ -255,7 +251,7 @@ func (w *Worker) write(ctx context.Context, pack xnet.Pack) (err error) {
 		return err
 	}
 
-	return codec.Encode(w.writer, out.(xnet.Pack))
+	return codec.Encode(w.conn, out.(xnet.Pack))
 }
 
 func (w *Worker) readLoop(ctx context.Context) (err error) {
@@ -263,8 +259,8 @@ func (w *Worker) readLoop(ctx context.Context) (err error) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-w.ClosingStart():
-			return nil
+		case <-w.StopTriggered():
+			return xsync.ErrStopByTrigger
 		default:
 			if err = w.read(ctx); err != nil {
 				return err
@@ -273,11 +269,15 @@ func (w *Worker) readLoop(ctx context.Context) (err error) {
 	}
 }
 func (w *Worker) read(ctx context.Context) error {
+	if w.OnStopping() {
+		return xsync.ErrIsStopped
+	}
+
 	if err := w.Conn().SetDeadline(time.Now().Add(w.conf.RequestIdleTimeout)); err != nil {
 		return errors.Wrap(err, "set conn deadline after handshake failed")
 	}
 
-	pack, free, err := codec.Decode(w.reader)
+	pack, free, err := codec.Decode(w.conn)
 	if err != nil {
 		return err
 	}
@@ -303,9 +303,9 @@ func (w *Worker) read(ctx context.Context) error {
 	return nil
 }
 
-func (w *Worker) Close(ctx context.Context) (err error) {
-	if doCloseErr := w.DoClose(func() {
-		if w.IsStarted() {
+func (w *Worker) Stop(ctx context.Context) (err error) {
+	if doCloseErr := w.TurnOff(ctx, func(ctx context.Context) {
+		if w.Connected() {
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
 
@@ -314,11 +314,13 @@ func (w *Worker) Close(ctx context.Context) (err error) {
 			}
 		}
 
-		w.tunnelManager.close()
-		w.delyClosure.Close()
+		if stopErr := w.tunnelManager.stop(ctx); stopErr != nil {
+			err = errors.Join(err, stopErr)
+		}
 
 		close(w.replyChan)
 
+		// wait replyChanCompleted to ensure all replyChan are sent
 		if w.replyChanStarted.Load() {
 			<-w.replyChanCompleted
 		}
@@ -338,21 +340,8 @@ func (w *Worker) Close(ctx context.Context) (err error) {
 	return err
 }
 
-func (w *Worker) IsStarted() bool {
-	return w.started.Load()
-}
-
-// SetStopCountDownTime Pass in the current time to set the worker shutdown countdown when the main tunnel is disconnected
-func (w *Worker) SetExpiryTime(now time.Time) {
-	w.delyClosure.SetExpiryTime(now.Add(w.conf.WaitMainTunnelTimeout))
-}
-
-func (w *Worker) ExpiryTime() time.Time {
-	return w.delyClosure.ExpiryTime()
-}
-
-func (w *Worker) Reset() {
-	w.delyClosure.Reset()
+func (w *Worker) Connected() bool {
+	return w.connected.Load()
 }
 
 func (w *Worker) Conn() net.Conn {

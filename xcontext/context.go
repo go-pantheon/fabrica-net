@@ -12,7 +12,6 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/metadata"
 	"github.com/go-pantheon/fabrica-util/errors"
-	"github.com/go-pantheon/fabrica-util/xsync"
 )
 
 const (
@@ -198,10 +197,6 @@ type ReadDeadline interface {
 
 type Deadline interface {
 	SetDeadline(t time.Time) error
-}
-
-type DeadlineSetter interface {
-	xsync.WaitClose
 }
 
 // SetDeadlineWithContext use context to control the deadline of the connection

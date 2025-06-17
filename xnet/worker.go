@@ -10,8 +10,7 @@ import (
 // Worker is an interface that combines tunnel holding, pushing,
 // and lifecycle management capabilities.
 type Worker interface {
-	xsync.WorkerDelayable
-	xsync.Closable
+	xsync.Stoppable
 	TunnelManager
 	Pusher
 }

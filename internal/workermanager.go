@@ -52,9 +52,9 @@ func (m *WorkerManager) Put(w *Worker) (old *Worker) {
 	return nil
 }
 
-func (m *WorkerManager) Del(w *Worker) {
-	uidWidMap.Delete(w.UID())
-	m.getBucket(w.WID()).Delete(w.WID())
+func (m *WorkerManager) Del(wid uint64) {
+	uidWidMap.Delete(wid)
+	m.getBucket(wid).Delete(wid)
 	m.size.Add(-1)
 }
 
