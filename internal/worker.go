@@ -54,6 +54,8 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worke
 		tunnelManager:      newTunnelManager(conf.TunnelGroupSize),
 		id:                 wid,
 		conn:               conn,
+		reader:             bufio.NewReader(conn),
+		writer:             bufio.NewWriter(conn),
 		conf:               conf,
 		svc:                svc,
 		referer:            referer,
@@ -73,9 +75,6 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worke
 	}
 
 	w.session = xnet.DefaultSession()
-
-	w.reader = bufio.NewReader(conn)
-	w.writer = bufio.NewWriter(conn)
 
 	return w
 }
@@ -105,7 +104,7 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return errors.Wrap(err, "set conn deadline before handshake failed")
 	}
 
-	in, free, err := codec.Decode(w.conn)
+	in, free, err := codec.Decode(w.reader)
 	if err != nil {
 		return err
 	}
@@ -116,7 +115,7 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return err
 	}
 
-	if err = codec.Encode(w.conn, out); err != nil {
+	if err = codec.Encode(w.writer, out); err != nil {
 		return err
 	}
 
@@ -251,7 +250,7 @@ func (w *Worker) write(ctx context.Context, pack xnet.Pack) (err error) {
 		return err
 	}
 
-	return codec.Encode(w.conn, out.(xnet.Pack))
+	return codec.Encode(w.writer, out.(xnet.Pack))
 }
 
 func (w *Worker) readLoop(ctx context.Context) (err error) {
@@ -277,7 +276,7 @@ func (w *Worker) read(ctx context.Context) error {
 		return errors.Wrap(err, "set conn deadline after handshake failed")
 	}
 
-	pack, free, err := codec.Decode(w.conn)
+	pack, free, err := codec.Decode(w.reader)
 	if err != nil {
 		return err
 	}

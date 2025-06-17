@@ -78,9 +78,9 @@ func (c *Client) Start(ctx context.Context) (err error) {
 
 	xcontext.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", c.Id))
 
+	c.conn = conn
 	c.reader = bufio.NewReader(conn)
 	c.writer = bufio.NewWriter(conn)
-	c.conn = conn
 
 	xsync.GoSafe(fmt.Sprintf("tcp.client.id=%d", c.Id), func() error {
 		return c.receive(ctx)
@@ -136,7 +136,7 @@ func (c *Client) readPackLoop(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			pack, free, err := codec.Decode(c.conn)
+			pack, free, err := codec.Decode(c.reader)
 			if err != nil {
 				return err
 			}
@@ -161,7 +161,7 @@ func (c *Client) Send(pack xnet.Pack) (err error) {
 		return err
 	}
 
-	return codec.Encode(c.conn, pack)
+	return codec.Encode(c.writer, pack)
 }
 
 func (c *Client) Receive() <-chan xnet.Pack {

@@ -1,6 +1,7 @@
 package codec
 
 import (
+	"bufio"
 	"encoding/binary"
 	"io"
 
@@ -54,7 +55,7 @@ func InitReaderPool(thresholds []int) error {
 	return nil
 }
 
-func Encode(w io.Writer, pack xnet.Pack) error {
+func Encode(w *bufio.Writer, pack xnet.Pack) error {
 	if err := binary.Write(w, binary.BigEndian, xnet.PackLenSize+int32(len(pack))); err != nil {
 		return errors.Wrap(err, "write pack len failed")
 	}
@@ -66,6 +67,10 @@ func Encode(w io.Writer, pack xnet.Pack) error {
 
 	if n != len(pack) {
 		return ErrShortWrite
+	}
+
+	if err := w.Flush(); err != nil {
+		return errors.Wrap(err, "flush writer failed")
 	}
 
 	return nil
