@@ -68,7 +68,7 @@ Core network abstractions and utilities:
 | -------------------- | ---------------------------- | ------- |
 | Go                   | Primary development language | 1.23+   |
 | go-kratos            | Microservices framework      | v2.8.4  |
-| fabrica-util         | Common utilities library     | v0.0.18 |
+| fabrica-util         | Common utilities library     | v0.0.20 |
 | Prometheus           | Metrics and monitoring       | v1.22.0 |
 | gRPC                 | Inter-service communication  | v1.73.0 |
 | golang.org/x/crypto  | Cryptographic operations     | v0.39.0 |
@@ -107,35 +107,65 @@ package main
 import (
     "context"
     "log"
+    "os"
+    "os/signal"
+    "syscall"
 
-    "github.com/go-pantheon/fabrica-net/tcp/server"
+    tcp "github.com/go-pantheon/fabrica-net/tcp/server"
     "github.com/go-pantheon/fabrica-net/xnet"
 )
 
 type GameService struct{}
 
-func (s *GameService) Handle(ctx context.Context, session xnet.Session, data []byte) error {
-    log.Printf("Received from user %d: %s", session.UID(), string(data))
+// Auth handles client authentication
+func (s *GameService) Auth(ctx context.Context, in xnet.Pack) (out xnet.Pack, ss xnet.Session, err error) {
+    // Authentication logic here
+    userID := int64(12345) // Extract from auth data
+    ss = xnet.NewSession(userID, "game", 1)
+
+    return []byte("auth success"), ss, nil
+}
+
+// Handle processes client messages
+func (s *GameService) Handle(ctx context.Context, ss xnet.Session, tm xnet.TunnelManager, in xnet.Pack) error {
+    log.Printf("Received from user %d: %s", ss.UID(), string(in))
     return nil
 }
+
+// Other required Service interface methods...
+func (s *GameService) TunnelType(mod int32) (int32, int, error) { return 1, 1, nil }
+func (s *GameService) CreateAppTunnel(ctx context.Context, ss xnet.Session, tp int32, rid int64, w xnet.Worker) (xnet.AppTunnel, error) { return nil, nil }
+func (s *GameService) OnConnected(ctx context.Context, ss xnet.Session) error { return nil }
+func (s *GameService) OnDisconnect(ctx context.Context, ss xnet.Session) error { return nil }
+func (s *GameService) Tick(ctx context.Context, ss xnet.Session) error { return nil }
 
 func main() {
     service := &GameService{}
 
-    srv, err := server.NewServer(service,
-        server.Bind(":8080"),
-        server.Logger(log.Default()),
-    )
+    srv, err := tcp.NewServer(":8080", service)
     if err != nil {
         log.Fatal(err)
     }
 
-    ctx := context.Background()
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
     if err := srv.Start(ctx); err != nil {
         log.Fatal(err)
     }
 
-    select {} // Keep running
+    defer func() {
+        if err := srv.Stop(ctx); err != nil {
+            log.Printf("stop server failed: %+v", err)
+        }
+    }()
+
+    // Wait for interrupt signal
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+    <-c
+
+    log.Printf("server stopped")
 }
 ```
 
@@ -149,22 +179,29 @@ import (
     "log"
     "time"
 
-    "github.com/go-pantheon/fabrica-net/tcp/client"
+    tcp "github.com/go-pantheon/fabrica-net/tcp/client"
+    "github.com/go-pantheon/fabrica-net/xnet"
 )
 
 func main() {
     // Create TCP client with ID and bind address
-    client := client.NewClient(12345, client.Bind("localhost:8080"))
+    client := tcp.NewClient(12345, tcp.Bind("localhost:8080"))
 
     // Start connection
-    ctx := context.Background()
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
     if err := client.Start(ctx); err != nil {
         log.Fatal(err)
     }
-    defer client.Close()
+    defer func() {
+        if err := client.Stop(ctx); err != nil {
+            log.Printf("stop client failed: %+v", err)
+        }
+    }()
 
     // Send message
-    message := []byte("Hello Server!")
+    message := xnet.Pack([]byte("Hello Server!"))
     if err := client.Send(message); err != nil {
         log.Fatal(err)
     }
@@ -188,22 +225,27 @@ package main
 
 import (
     "log"
+    "time"
 
     "github.com/go-pantheon/fabrica-net/xnet"
 )
 
 func main() {
-    // Create encrypted session
+    // Create encrypted session with options
     key := []byte("0123456789abcdef0123456789abcdef")
     cryptor, err := xnet.NewCryptor(key)
     if err != nil {
         log.Fatal(err)
     }
 
-    session := xnet.NewSession(12345, 1, time.Now().Unix(), cryptor, xnet.NewUnECDH(), "game", 1)
+    session := xnet.NewSession(12345, "game", 1,
+        xnet.WithEncryptor(cryptor),
+        xnet.WithSID(1),
+        xnet.WithStartTime(time.Now().Unix()),
+    )
 
     // Encrypt data
-    data := []byte("sensitive game data")
+    data := xnet.Pack([]byte("sensitive game data"))
     encrypted, err := session.Encrypt(data)
     if err != nil {
         log.Fatal(err)
@@ -225,6 +267,7 @@ func main() {
 package main
 
 import (
+    "runtime"
     "time"
 
     "github.com/go-pantheon/fabrica-net/conf"
@@ -233,25 +276,28 @@ import (
 func main() {
     config := conf.Config{
         Server: conf.Server{
-            WorkerSize:   8,
-            Bind:         ":7000",
+            WorkerSize:   runtime.NumCPU(),
             WriteBufSize: 30000,
             ReadBufSize:  30000,
             KeepAlive:    true,
-            StopTimeout:  time.Second * 30,
         },
         Worker: conf.Worker{
             ReaderBufSize:         8192,
             ReplyChanSize:         1024,
             HandshakeTimeout:      time.Second * 10,
             RequestIdleTimeout:    time.Second * 60,
+            WaitMainTunnelTimeout: time.Second * 30,
             StopTimeout:           time.Second * 3,
             TunnelGroupSize:       32,
             TickInterval:          time.Second * 10,
         },
+        Bucket: conf.Bucket{
+            BucketSize: 128,
+        },
     }
 
-    // Use configuration...
+    // Use configuration with server options
+    // srv, err := tcp.NewServer(":8080", service, tcp.WithConf(config))
 }
 ```
 
@@ -266,16 +312,26 @@ func main() {
 │   ├── session.go      # Session management
 │   ├── transport.go    # Transport layer
 │   ├── crypto.go       # AES-GCM encryption
-│   └── ecdh.go         # ECDH key exchange
+│   ├── ecdh.go         # ECDH key exchange
+│   ├── service.go      # Service interface
+│   ├── tunnel.go       # Tunnel management
+│   └── worker.go       # Worker interface
+├── tunnel/             # Tunnel implementation
 ├── xcontext/           # Context utilities
 ├── http/               # HTTP utilities
 │   └── health/         # Health check endpoints
 ├── middleware/         # Middleware components
 ├── internal/           # Internal implementations
-│   ├── manager.go      # Worker manager
-│   ├── worker.go       # Connection worker
-│   └── tunnel.go       # Communication tunnel
-└── conf/               # Configuration management
+│   ├── workermanager.go    # Worker manager
+│   ├── tunnelmanager.go    # Tunnel manager
+│   ├── worker.go           # Connection worker
+│   ├── bufpool/            # Buffer pool utilities
+│   ├── codec/              # Message encoding/decoding
+│   └── ip/                 # IP utilities
+├── conf/               # Configuration management
+│   └── conf.go         # Configuration structures
+└── example/            # Example applications
+    └── tcp/            # TCP client/server examples
 ```
 
 ## Integration with go-pantheon Components
@@ -285,7 +341,7 @@ Fabrica Net is designed to be imported by other go-pantheon components:
 ```go
 import (
     // TCP server for Janus gateway
-    "github.com/go-pantheon/fabrica-net/tcp/server"
+    tcp "github.com/go-pantheon/fabrica-net/tcp/server"
 
     // Session management for user connections
     "github.com/go-pantheon/fabrica-net/xnet"
@@ -326,6 +382,21 @@ make benchmark
 
 # Run linting
 make lint
+```
+
+### Running Examples
+
+The project includes comprehensive examples in the `example/` directory:
+
+```bash
+# Build and run TCP server example
+cd example/tcp
+make build-server
+./bin/server
+
+# Build and run TCP client example
+make build-client
+./bin/client
 ```
 
 ### Adding New Protocols

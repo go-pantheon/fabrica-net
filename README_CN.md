@@ -68,7 +68,7 @@ Fabrica Net 是一个高性能、企业级网络库，专门为 [go-pantheon/jan
 | ------------------- | ------------ | ------- |
 | Go                  | 主要开发语言 | 1.23+   |
 | go-kratos           | 微服务框架   | v2.8.4  |
-| fabrica-util        | 通用工具库   | v0.0.18 |
+| fabrica-util        | 通用工具库   | v0.0.20 |
 | Prometheus          | 指标和监控   | v1.22.0 |
 | gRPC                | 服务间通信   | v1.73.0 |
 | golang.org/x/crypto | 加密操作     | v0.39.0 |
@@ -107,35 +107,65 @@ package main
 import (
     "context"
     "log"
+    "os"
+    "os/signal"
+    "syscall"
 
-    "github.com/go-pantheon/fabrica-net/tcp/server"
+    tcp "github.com/go-pantheon/fabrica-net/tcp/server"
     "github.com/go-pantheon/fabrica-net/xnet"
 )
 
 type GameService struct{}
 
-func (s *GameService) Handle(ctx context.Context, session xnet.Session, data []byte) error {
-    log.Printf("从用户 %d 收到消息: %s", session.UID(), string(data))
+// Auth 处理客户端认证
+func (s *GameService) Auth(ctx context.Context, in xnet.Pack) (out xnet.Pack, ss xnet.Session, err error) {
+    // 认证逻辑
+    userID := int64(12345) // 从认证数据中提取
+    ss = xnet.NewSession(userID, "game", 1)
+
+    return []byte("认证成功"), ss, nil
+}
+
+// Handle 处理客户端消息
+func (s *GameService) Handle(ctx context.Context, ss xnet.Session, tm xnet.TunnelManager, in xnet.Pack) error {
+    log.Printf("从用户 %d 收到消息: %s", ss.UID(), string(in))
     return nil
 }
+
+// 其他必需的 Service 接口方法...
+func (s *GameService) TunnelType(mod int32) (int32, int, error) { return 1, 1, nil }
+func (s *GameService) CreateAppTunnel(ctx context.Context, ss xnet.Session, tp int32, rid int64, w xnet.Worker) (xnet.AppTunnel, error) { return nil, nil }
+func (s *GameService) OnConnected(ctx context.Context, ss xnet.Session) error { return nil }
+func (s *GameService) OnDisconnect(ctx context.Context, ss xnet.Session) error { return nil }
+func (s *GameService) Tick(ctx context.Context, ss xnet.Session) error { return nil }
 
 func main() {
     service := &GameService{}
 
-    srv, err := server.NewServer(service,
-        server.Bind(":8080"),
-        server.Logger(log.Default()),
-    )
+    srv, err := tcp.NewServer(":8080", service)
     if err != nil {
         log.Fatal(err)
     }
 
-    ctx := context.Background()
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
     if err := srv.Start(ctx); err != nil {
         log.Fatal(err)
     }
 
-    select {} // 保持运行
+    defer func() {
+        if err := srv.Stop(ctx); err != nil {
+            log.Printf("停止服务器失败: %+v", err)
+        }
+    }()
+
+    // 等待中断信号
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+    <-c
+
+    log.Printf("服务器已停止")
 }
 ```
 
@@ -149,22 +179,29 @@ import (
     "log"
     "time"
 
-    "github.com/go-pantheon/fabrica-net/tcp/client"
+    tcp "github.com/go-pantheon/fabrica-net/tcp/client"
+    "github.com/go-pantheon/fabrica-net/xnet"
 )
 
 func main() {
     // 创建带 ID 和绑定地址的 TCP 客户端
-    client := client.NewClient(12345, client.Bind("localhost:8080"))
+    client := tcp.NewClient(12345, tcp.Bind("localhost:8080"))
 
     // 启动连接
-    ctx := context.Background()
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
     if err := client.Start(ctx); err != nil {
         log.Fatal(err)
     }
-    defer client.Close()
+    defer func() {
+        if err := client.Stop(ctx); err != nil {
+            log.Printf("停止客户端失败: %+v", err)
+        }
+    }()
 
     // 发送消息
-    message := []byte("你好服务器!")
+    message := xnet.Pack([]byte("你好服务器!"))
     if err := client.Send(message); err != nil {
         log.Fatal(err)
     }
@@ -194,17 +231,21 @@ import (
 )
 
 func main() {
-    // 创建加密会话
+    // 使用选项创建加密会话
     key := []byte("0123456789abcdef0123456789abcdef")
     cryptor, err := xnet.NewCryptor(key)
     if err != nil {
         log.Fatal(err)
     }
 
-    session := xnet.NewSession(12345, 1, time.Now().Unix(), cryptor, xnet.NewUnECDH(), "game", 1)
+    session := xnet.NewSession(12345, "game", 1,
+        xnet.WithEncryptor(cryptor),
+        xnet.WithSID(1),
+        xnet.WithStartTime(time.Now().Unix()),
+    )
 
     // 加密数据
-    data := []byte("敏感游戏数据")
+    data := xnet.Pack([]byte("敏感游戏数据"))
     encrypted, err := session.Encrypt(data)
     if err != nil {
         log.Fatal(err)
@@ -226,6 +267,7 @@ func main() {
 package main
 
 import (
+    "runtime"
     "time"
 
     "github.com/go-pantheon/fabrica-net/conf"
@@ -234,25 +276,28 @@ import (
 func main() {
     config := conf.Config{
         Server: conf.Server{
-            WorkerSize:   8,
-            Bind:         ":7000",
+            WorkerSize:   runtime.NumCPU(),
             WriteBufSize: 30000,
             ReadBufSize:  30000,
             KeepAlive:    true,
-            StopTimeout:  time.Second * 30,
         },
         Worker: conf.Worker{
             ReaderBufSize:         8192,
             ReplyChanSize:         1024,
             HandshakeTimeout:      time.Second * 10,
             RequestIdleTimeout:    time.Second * 60,
+            WaitMainTunnelTimeout: time.Second * 30,
             StopTimeout:           time.Second * 3,
             TunnelGroupSize:       32,
             TickInterval:          time.Second * 10,
         },
+        Bucket: conf.Bucket{
+            BucketSize: 128,
+        },
     }
 
-    // 使用配置...
+    // 通过服务器选项使用配置
+    // srv, err := tcp.NewServer(":8080", service, tcp.WithConf(config))
 }
 ```
 
@@ -267,16 +312,26 @@ func main() {
 │   ├── session.go      # 会话管理
 │   ├── transport.go    # 传输层
 │   ├── crypto.go       # AES-GCM 加密
-│   └── ecdh.go         # ECDH 密钥交换
+│   ├── ecdh.go         # ECDH 密钥交换
+│   ├── service.go      # 服务接口
+│   ├── tunnel.go       # 隧道管理
+│   └── worker.go       # 工作器接口
+├── tunnel/             # 隧道实现
 ├── xcontext/           # 上下文工具
 ├── http/               # HTTP 工具
 │   └── health/         # 健康检查端点
 ├── middleware/         # 中间件组件
 ├── internal/           # 内部实现
-│   ├── manager.go      # 工作器管理器
-│   ├── worker.go       # 连接工作器
-│   └── tunnel.go       # 通信隧道
-└── conf/               # 配置管理
+│   ├── workermanager.go    # 工作器管理器
+│   ├── tunnelmanager.go    # 隧道管理器
+│   ├── worker.go           # 连接工作器
+│   ├── bufpool/            # 缓冲池工具
+│   ├── codec/              # 消息编码/解码
+│   └── ip/                 # IP 工具
+├── conf/               # 配置管理
+│   └── conf.go         # 配置结构
+└── example/            # 示例应用
+    └── tcp/            # TCP 客户端/服务器示例
 ```
 
 ## 与 go-pantheon 组件集成
@@ -286,7 +341,7 @@ Fabrica Net 专为其他 go-pantheon 组件导入而设计：
 ```go
 import (
     // Janus 网关的 TCP 服务器
-    "github.com/go-pantheon/fabrica-net/tcp/server"
+    tcp "github.com/go-pantheon/fabrica-net/tcp/server"
 
     // 用户连接的会话管理
     "github.com/go-pantheon/fabrica-net/xnet"
@@ -327,6 +382,21 @@ make benchmark
 
 # 运行代码检查
 make lint
+```
+
+### 运行示例
+
+项目在 `example/` 目录中包含全面的示例：
+
+```bash
+# 构建并运行 TCP 服务器示例
+cd example/tcp
+make build-server
+./bin/server
+
+# 构建并运行 TCP 客户端示例
+make build-client
+./bin/client
 ```
 
 ### 添加新协议
