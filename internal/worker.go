@@ -143,17 +143,17 @@ func (w *Worker) Run(ctx context.Context) error {
 		}
 	})
 	eg.Go(func() error {
-		return xsync.RunSafe(func() error {
+		return xsync.Run(func() error {
 			return w.replyLoop(ctx)
 		})
 	})
 	eg.Go(func() error {
-		return xsync.RunSafe(func() error {
+		return xsync.Run(func() error {
 			return w.readLoop(ctx)
 		})
 	})
 	eg.Go(func() error {
-		return xsync.RunSafe(func() error {
+		return xsync.Run(func() error {
 			return w.tickLoop(ctx)
 		})
 	})
@@ -293,7 +293,7 @@ func (w *Worker) read(ctx context.Context) error {
 }
 
 func (w *Worker) Stop(ctx context.Context) (err error) {
-	return w.TurnOff(ctx, func(ctx context.Context) error {
+	return w.TurnOff(func() error {
 		if w.Connected() {
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()

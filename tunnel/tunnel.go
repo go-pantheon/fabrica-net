@@ -37,8 +37,10 @@ func NewTunnel(ctx context.Context, pusher xnet.Pusher, app xnet.AppTunnel) *Tun
 		csChan:    make(chan xnet.TunnelMessage, 1024),
 	}
 
-	xsync.GoSafe(fmt.Sprintf("gate.Tunnel-%d-%d-%d", t.UID(), t.Type(), t.OID()), func() error {
+	t.GoAndQuickStop(fmt.Sprintf("gate.Tunnel-%d-%d-%d", t.UID(), t.Type(), t.OID()), func() error {
 		return t.run(ctx)
+	}, func() error {
+		return t.Stop(ctx)
 	})
 
 	return t
@@ -61,12 +63,12 @@ func (t *Tunnel) run(ctx context.Context) (err error) {
 		}
 	})
 	eg.Go(func() error {
-		return xsync.RunSafe(func() error {
+		return xsync.Run(func() error {
 			return t.csLoop(ctx)
 		})
 	})
 	eg.Go(func() error {
-		return xsync.RunSafe(func() error {
+		return xsync.Run(func() error {
 			return t.scLoop(ctx)
 		})
 	})
@@ -140,10 +142,10 @@ func (t *Tunnel) Forward(ctx context.Context, p xnet.TunnelMessage) error {
 }
 
 func (t *Tunnel) stop(ctx context.Context, erreason error) (err error) {
-	return t.TurnOff(ctx, func(ctx context.Context) error {
+	return t.TurnOff(func() error {
 		close(t.csChan)
 
-		if onStopErr := t.OnStop(erreason); onStopErr != nil {
+		if onStopErr := t.OnStop(ctx, erreason); onStopErr != nil {
 			err = errors.Join(err, onStopErr)
 		}
 

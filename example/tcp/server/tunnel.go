@@ -67,7 +67,7 @@ func (t *EchoTunnel) TunnelMsgToPack(ctx context.Context, msg xnet.TunnelMessage
 	return data, nil
 }
 
-func (t *EchoTunnel) OnStop(erreason error) (err error) {
+func (t *EchoTunnel) OnStop(ctx context.Context, erreason error) (err error) {
 	t.log.Infof("tunnel closed. %+v", erreason)
 
 	return nil

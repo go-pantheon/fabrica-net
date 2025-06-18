@@ -16,6 +16,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var ErrSendFinished = errors.New("send finished")
+
 func main() {
 	cli := tcp.NewClient(1, tcp.Bind("127.0.0.1:17101"))
 
@@ -31,8 +33,6 @@ func main() {
 			log.Errorf("stop client failed. %+v", err)
 		}
 	}()
-
-	log.Infof("client started")
 
 	authorizedSign := make(chan struct{})
 
@@ -136,7 +136,7 @@ func sendEcho(cli *tcp.Client) error {
 		time.Sleep(time.Second * 1)
 	}
 
-	return nil
+	return ErrSendFinished
 }
 
 func recvEcho(cli *tcp.Client) error {

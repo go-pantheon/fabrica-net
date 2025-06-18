@@ -24,7 +24,7 @@ type AppTunnel interface {
 	SCHandle() (TunnelMessage, error)
 	PacketToTunnelMsg(from PacketMessage) (to TunnelMessage)
 	TunnelMsgToPack(ctx context.Context, msg TunnelMessage) (pack Pack, err error)
-	OnStop(erreason error) (err error)
+	OnStop(ctx context.Context, erreason error) (err error)
 }
 
 type AppBaseTunnel interface {

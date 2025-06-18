@@ -55,11 +55,11 @@ func (m *Packet) GetData() []byte {
 }
 
 func (m *Packet) GetIndex() int32 {
-	return 0
+	return m.Index
 }
 
 func (m *Packet) GetDataVersion() uint64 {
-	return 0
+	return m.DataVersion
 }
 
 func (m *Packet) String() string {

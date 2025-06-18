@@ -164,12 +164,14 @@ func (s *Server) Start(ctx context.Context) error {
 
 	for i := range s.workerSize {
 		aid := i
-		xsync.GoSafe(fmt.Sprintf("tcp.Server.acceptLoop.%d", aid), func() error {
+		s.GoAndQuickStop(fmt.Sprintf("tcp.Server.acceptLoop.%d", aid), func() error {
 			return s.acceptLoop(ctx, widGener)
+		}, func() error {
+			return s.Stop(ctx)
 		})
 	}
 
-	log.Infof("[tcp.Server] listening on %s", addr.String())
+	log.Infof("[tcp.Server] started. Listening on %s", addr.String())
 
 	return nil
 }
@@ -197,7 +199,7 @@ func (s *Server) accept(ctx context.Context, widGener *atomic.Uint64) error {
 
 	wid := widGener.Add(1)
 
-	xsync.GoSafe(fmt.Sprintf("tcp.Server.serve.%d", wid), func() error {
+	xsync.Go(fmt.Sprintf("tcp.Server.serve.%d", wid), func() error {
 		return s.serve(ctx, conn, wid)
 	})
 
@@ -272,7 +274,7 @@ func (s *Server) delWorker(wid uint64) {
 }
 
 func (s *Server) Stop(ctx context.Context) (err error) {
-	return s.TurnOff(ctx, func(ctx context.Context) error {
+	return s.TurnOff(func() error {
 		s.workerManager.Walk(func(w *internal.Worker) (continued bool) {
 			if stopErr := w.Stop(ctx); stopErr != nil {
 				err = errors.JoinUnsimilar(err, stopErr)
@@ -280,6 +282,8 @@ func (s *Server) Stop(ctx context.Context) (err error) {
 
 			return true
 		})
+
+		log.Infof("[tcp.Server] stopped.")
 
 		return err
 	})

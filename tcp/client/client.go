@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/internal/codec"
 	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/xnet"
@@ -81,9 +82,13 @@ func (c *Client) Start(ctx context.Context) (err error) {
 	c.reader = bufio.NewReader(conn)
 	c.writer = bufio.NewWriter(conn)
 
-	xsync.GoSafe(fmt.Sprintf("tcp.client.id=%d", c.Id), func() error {
+	c.GoAndQuickStop(fmt.Sprintf("tcp.client.receive.id=%d", c.Id), func() error {
 		return c.receive(ctx)
+	}, func() error {
+		return c.Stop(ctx)
 	})
+
+	log.Infof("[tcp.client] %d started.", c.Id)
 
 	return nil
 }
@@ -99,34 +104,38 @@ func (c *Client) receive(ctx context.Context) error {
 		}
 	})
 	eg.Go(func() error {
-		return xsync.RunSafe(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				default:
-					pack, free, err := codec.Decode(c.reader)
-					if err != nil {
-						return err
-					}
-
-					defer free()
-
-					if pack, err = c.cryptor.Decrypt(pack); err != nil {
-						return err
-					}
-
-					c.receivedPackChan <- pack
-				}
-			}
+		return xsync.Run(func() error {
+			return c.receiveLoop(ctx)
 		})
 	})
 
 	return eg.Wait()
 }
 
+func (c *Client) receiveLoop(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			pack, free, err := codec.Decode(c.reader)
+			if err != nil {
+				return err
+			}
+
+			defer free()
+
+			if pack, err = c.cryptor.Decrypt(pack); err != nil {
+				return err
+			}
+
+			c.receivedPackChan <- pack
+		}
+	}
+}
+
 func (c *Client) Stop(ctx context.Context) (err error) {
-	return c.TurnOff(ctx, func(ctx context.Context) error {
+	return c.TurnOff(func() error {
 		close(c.receivedPackChan)
 
 		if flushErr := c.writer.Flush(); flushErr != nil {
@@ -136,6 +145,8 @@ func (c *Client) Stop(ctx context.Context) (err error) {
 		if closeErr := c.conn.Close(); closeErr != nil {
 			err = errors.Join(err, closeErr)
 		}
+
+		log.Infof("[tcp.client] %d stopped.", c.Id)
 
 		return err
 	})
