@@ -37,77 +37,47 @@ func main() {
 	authorizedSign := make(chan struct{})
 
 	eg, ctx := errgroup.WithContext(ctx)
-
 	eg.Go(func() error {
-		<-ctx.Done()
-		return ctx.Err()
-	})
-
-	eg.Go(func() error {
-		authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, []byte("Hi!"), 0)
-
-		authPack, err := json.Marshal(authMsg)
-		if err != nil {
-			return err
-		}
-
-		if err := cli.Send(authPack); err != nil {
-			return err
-		}
-
-		<-authorizedSign
-
-		log.Infof("[send] auth %s", authMsg)
-
-		for i := range 10 {
-			msg := message.NewPacket(message.ModEcho, 0, 1, int32(i), []byte("Hello Alice!"), 0)
-
-			pack, err := json.Marshal(msg)
-			if err != nil {
-				return errors.Wrap(err, "marshal message failed")
-			}
-
-			if err := cli.Send(pack); err != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if err := sendAuth(cli); err != nil {
 				return err
 			}
 
-			log.Infof("[send] echo %s", msg)
-			time.Sleep(time.Second * 1)
-		}
+			<-authorizedSign
 
-		return nil
+			return sendEcho(cli)
+		}
 	})
-
 	eg.Go(func() error {
-		authRecvPack := <-cli.Receive()
-
-		authRecvMsg := &message.Packet{}
-		if err := json.Unmarshal(authRecvPack, authRecvMsg); err != nil {
-			return errors.Wrap(err, "unmarshal auth recv pack failed")
-		}
-
-		log.Infof("[recv] auth %s", authRecvMsg)
-		close(authorizedSign)
-
-		for pack := range cli.Receive() {
-			msg := &message.Packet{}
-			if err := json.Unmarshal(pack, msg); err != nil {
-				return errors.Wrap(err, "unmarshal echo recv pack failed")
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if err := recvAuth(cli); err != nil {
+				return err
 			}
 
-			log.Infof("[recv] echo %s", msg)
-		}
+			close(authorizedSign)
 
-		return nil
+			return recvEcho(cli)
+		}
 	})
 
 	c := make(chan os.Signal, 1)
 
 	eg.Go(func() error {
-		signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
-		<-c
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+			<-c
 
-		return xsync.ErrSignalStop
+			return xsync.ErrSignalStop
+		}
 	})
 
 	if err := eg.Wait(); err != nil &&
@@ -117,4 +87,67 @@ func main() {
 	} else {
 		log.Infof("client stopped")
 	}
+}
+
+func sendAuth(cli *tcp.Client) error {
+	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, []byte("Hi!"), 0)
+
+	authPack, err := json.Marshal(authMsg)
+	if err != nil {
+		return err
+	}
+
+	if err := cli.Send(authPack); err != nil {
+		return err
+	}
+
+	log.Infof("[send] auth %s", authMsg)
+
+	return nil
+}
+
+func recvAuth(cli *tcp.Client) error {
+	authRecvPack := <-cli.Receive()
+
+	authRecvMsg := &message.Packet{}
+	if err := json.Unmarshal(authRecvPack, authRecvMsg); err != nil {
+		return errors.Wrap(err, "unmarshal auth recv pack failed")
+	}
+
+	log.Infof("[recv] auth %s", authRecvMsg)
+
+	return nil
+}
+
+func sendEcho(cli *tcp.Client) error {
+	for i := range 10 {
+		msg := message.NewPacket(message.ModEcho, 0, 1, int32(i), []byte("Hello Alice!"), 0)
+
+		pack, err := json.Marshal(msg)
+		if err != nil {
+			return errors.Wrap(err, "marshal message failed")
+		}
+
+		if err := cli.Send(pack); err != nil {
+			return err
+		}
+
+		log.Infof("[send] echo %s", msg)
+		time.Sleep(time.Second * 1)
+	}
+
+	return nil
+}
+
+func recvEcho(cli *tcp.Client) error {
+	for pack := range cli.Receive() {
+		msg := &message.Packet{}
+		if err := json.Unmarshal(pack, msg); err != nil {
+			return errors.Wrap(err, "unmarshal echo recv pack failed")
+		}
+
+		log.Infof("[recv] echo %s", msg)
+	}
+
+	return nil
 }

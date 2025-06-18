@@ -79,8 +79,6 @@ func (t *Tunnel) csLoop(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-t.StopTriggered():
-			return xsync.ErrStopByTrigger
 		case cs := <-t.csChan:
 			if err := t.CSHandle(cs); err != nil {
 				return err
@@ -94,8 +92,6 @@ func (t *Tunnel) scLoop(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-t.StopTriggered():
-			return xsync.ErrStopByTrigger
 		default:
 			msg, err := t.SCHandle()
 			if err != nil {
@@ -144,14 +140,13 @@ func (t *Tunnel) Forward(ctx context.Context, p xnet.TunnelMessage) error {
 }
 
 func (t *Tunnel) stop(ctx context.Context, erreason error) (err error) {
-	if turnOffErr := t.TurnOff(ctx, func(ctx context.Context) {
+	return t.TurnOff(ctx, func(ctx context.Context) error {
 		close(t.csChan)
+
 		if onStopErr := t.OnStop(erreason); onStopErr != nil {
 			err = errors.Join(err, onStopErr)
 		}
-	}); turnOffErr != nil {
-		err = errors.Join(err, turnOffErr)
-	}
 
-	return err
+		return err
+	})
 }

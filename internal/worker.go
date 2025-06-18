@@ -20,6 +20,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const defaultWorkerTickInterval = time.Second * 10
+
 var _ xnet.Worker = (*Worker)(nil)
 
 type Worker struct {
@@ -42,27 +44,24 @@ type Worker struct {
 	readFilter  middleware.Middleware
 	writeFilter middleware.Middleware
 
-	replyChanStarted   atomic.Bool
-	replyChanCompleted chan struct{}
-	replyChan          chan xnet.Pack
+	replyChan chan xnet.Pack
 }
 
 func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worker, referer string,
 	readFilter, writeFilter middleware.Middleware, svc xnet.Service) *Worker {
 	w := &Worker{
-		Stoppable:          xsync.NewStopper(conf.StopTimeout),
-		tunnelManager:      newTunnelManager(conf.TunnelGroupSize),
-		id:                 wid,
-		conn:               conn,
-		reader:             bufio.NewReader(conn),
-		writer:             bufio.NewWriter(conn),
-		conf:               conf,
-		svc:                svc,
-		referer:            referer,
-		readFilter:         readFilter,
-		writeFilter:        writeFilter,
-		replyChanCompleted: make(chan struct{}),
-		replyChan:          make(chan xnet.Pack, conf.ReplyChanSize),
+		Stoppable:     xsync.NewStopper(conf.StopTimeout),
+		tunnelManager: newTunnelManager(conf.TunnelGroupSize),
+		id:            wid,
+		conn:          conn,
+		reader:        bufio.NewReader(conn),
+		writer:        bufio.NewWriter(conn),
+		conf:          conf,
+		svc:           svc,
+		referer:       referer,
+		readFilter:    readFilter,
+		writeFilter:   writeFilter,
+		replyChan:     make(chan xnet.Pack, conf.ReplyChanSize),
 	}
 
 	w.createTunnelFunc = func(ctx context.Context, tp int32, oid int64) (xnet.Tunnel, error) {
@@ -144,25 +143,69 @@ func (w *Worker) Run(ctx context.Context) error {
 		}
 	})
 	eg.Go(func() error {
-		err := xsync.RunSafe(func() error {
-			return w.writeLoop(ctx)
+		return xsync.RunSafe(func() error {
+			return w.replyLoop(ctx)
 		})
-
-		return err
 	})
 	eg.Go(func() error {
-		err := xsync.RunSafe(func() error {
+		return xsync.RunSafe(func() error {
 			return w.readLoop(ctx)
 		})
-
-		return err
 	})
 	eg.Go(func() error {
-		err := w.tick(ctx)
-		return err
+		return xsync.RunSafe(func() error {
+			return w.tickLoop(ctx)
+		})
 	})
 
 	return eg.Wait()
+}
+
+func (w *Worker) replyLoop(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case pack := <-w.replyChan:
+			if err := w.write(ctx, pack); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (w *Worker) readLoop(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if err := w.read(ctx); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (w *Worker) tickLoop(ctx context.Context) error {
+	interval := w.conf.TickInterval
+	if interval <= 0 {
+		interval = defaultWorkerTickInterval
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if err := w.svc.Tick(ctx, w.session); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (w *Worker) Tunnel(ctx context.Context, mod int32, oid int64) (t xnet.Tunnel, err error) {
@@ -192,45 +235,6 @@ func (w *Worker) Push(ctx context.Context, out xnet.Pack) error {
 	return nil
 }
 
-const defaultWorkerTickInterval = time.Second * 10
-
-func (w *Worker) tick(ctx context.Context) (err error) {
-	interval := w.conf.TickInterval
-	if interval <= 0 {
-		interval = defaultWorkerTickInterval
-	}
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-w.StopTriggered():
-			return xsync.ErrStopByTrigger
-		case <-ticker.C:
-			if err = w.svc.Tick(ctx, w.session); err != nil {
-				return err
-			}
-		}
-	}
-}
-
-func (w *Worker) writeLoop(ctx context.Context) (err error) {
-	w.replyChanStarted.Store(true)
-
-	defer close(w.replyChanCompleted)
-
-	for pack := range w.replyChan {
-		if err = w.write(ctx, pack); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func writeNext(ctx context.Context, pk any) (any, error) {
 	return pk, nil
 }
@@ -253,20 +257,6 @@ func (w *Worker) write(ctx context.Context, pack xnet.Pack) (err error) {
 	return codec.Encode(w.writer, out.(xnet.Pack))
 }
 
-func (w *Worker) readLoop(ctx context.Context) (err error) {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-w.StopTriggered():
-			return xsync.ErrStopByTrigger
-		default:
-			if err = w.read(ctx); err != nil {
-				return err
-			}
-		}
-	}
-}
 func (w *Worker) read(ctx context.Context) error {
 	if w.OnStopping() {
 		return xsync.ErrIsStopped
@@ -303,7 +293,7 @@ func (w *Worker) read(ctx context.Context) error {
 }
 
 func (w *Worker) Stop(ctx context.Context) (err error) {
-	if doCloseErr := w.TurnOff(ctx, func(ctx context.Context) {
+	return w.TurnOff(ctx, func(ctx context.Context) error {
 		if w.Connected() {
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
@@ -319,24 +309,18 @@ func (w *Worker) Stop(ctx context.Context) (err error) {
 
 		close(w.replyChan)
 
-		// wait replyChanCompleted to ensure all replyChan are sent
-		if w.replyChanStarted.Load() {
-			<-w.replyChanCompleted
-		}
-
 		if writerErr := w.writer.Flush(); writerErr != nil {
 			err = errors.Join(err, writerErr)
 		}
 
 		if connCloseErr := w.conn.Close(); connCloseErr != nil {
 			err = errors.Join(err, connCloseErr)
+
 			xcontext.SetDeadlineWithContext(ctx, w.conn, fmt.Sprintf("wid=%d", w.WID()))
 		}
-	}); doCloseErr != nil {
-		err = errors.Join(err, doCloseErr)
-	}
 
-	return err
+		return err
+	})
 }
 
 func (w *Worker) Connected() bool {

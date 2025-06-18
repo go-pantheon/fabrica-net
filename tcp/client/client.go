@@ -7,7 +7,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/internal/codec"
 	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/xnet"
@@ -101,7 +100,25 @@ func (c *Client) receive(ctx context.Context) error {
 	})
 	eg.Go(func() error {
 		return xsync.RunSafe(func() error {
-			return c.readPackLoop(ctx)
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					pack, free, err := codec.Decode(c.reader)
+					if err != nil {
+						return err
+					}
+
+					defer free()
+
+					if pack, err = c.cryptor.Decrypt(pack); err != nil {
+						return err
+					}
+
+					c.receivedPackChan <- pack
+				}
+			}
 		})
 	})
 
@@ -109,7 +126,7 @@ func (c *Client) receive(ctx context.Context) error {
 }
 
 func (c *Client) Stop(ctx context.Context) (err error) {
-	if turnOffErr := c.TurnOff(ctx, func(ctx context.Context) {
+	return c.TurnOff(ctx, func(ctx context.Context) error {
 		close(c.receivedPackChan)
 
 		if flushErr := c.writer.Flush(); flushErr != nil {
@@ -119,37 +136,9 @@ func (c *Client) Stop(ctx context.Context) (err error) {
 		if closeErr := c.conn.Close(); closeErr != nil {
 			err = errors.Join(err, closeErr)
 		}
-	}); turnOffErr != nil {
-		return errors.Join(err, turnOffErr)
-	}
 
-	log.Infof("[tcp.Client] client is closed. id=%d", c.Id)
-
-	return nil
-}
-
-func (c *Client) readPackLoop(ctx context.Context) error {
-	for {
-		select {
-		case <-c.StopTriggered():
-			return xsync.ErrStopByTrigger
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			pack, free, err := codec.Decode(c.reader)
-			if err != nil {
-				return err
-			}
-
-			defer free()
-
-			if pack, err = c.cryptor.Decrypt(pack); err != nil {
-				return err
-			}
-
-			c.receivedPackChan <- pack
-		}
-	}
+		return err
+	})
 }
 
 func (c *Client) Send(pack xnet.Pack) (err error) {

@@ -272,7 +272,7 @@ func (s *Server) delWorker(wid uint64) {
 }
 
 func (s *Server) Stop(ctx context.Context) (err error) {
-	if doCloseErr := s.TurnOff(ctx, func(ctx context.Context) {
+	return s.TurnOff(ctx, func(ctx context.Context) error {
 		s.workerManager.Walk(func(w *internal.Worker) (continued bool) {
 			if stopErr := w.Stop(ctx); stopErr != nil {
 				err = errors.JoinUnsimilar(err, stopErr)
@@ -280,13 +280,9 @@ func (s *Server) Stop(ctx context.Context) (err error) {
 
 			return true
 		})
-	}); doCloseErr != nil {
-		err = errors.Join(err, doCloseErr)
-	}
 
-	log.Info("[tcp.Server] TCP server is closed")
-
-	return err
+		return err
+	})
 }
 
 func (s *Server) Disconnect(ctx context.Context, wid uint64) error {
