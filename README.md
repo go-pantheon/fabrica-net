@@ -66,7 +66,7 @@ Core network abstractions and utilities:
 
 | Technology/Component | Purpose                      | Version |
 | -------------------- | ---------------------------- | ------- |
-| Go                   | Primary development language | 1.23+   |
+| Go                   | Primary development language | 1.24+   |
 | go-kratos            | Microservices framework      | v2.8.4  |
 | fabrica-util         | Common utilities library     | v0.0.20 |
 | Prometheus           | Metrics and monitoring       | v1.22.0 |
@@ -75,7 +75,7 @@ Core network abstractions and utilities:
 
 ## Requirements
 
-- Go 1.23+
+- Go 1.24+
 
 ## Quick Start
 
