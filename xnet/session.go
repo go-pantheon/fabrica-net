@@ -18,8 +18,8 @@ type Session interface {
 	ClientIP() string
 	SetClientIP(ip string)
 
-	CSIndex() int64
-	IncreaseCSIndex() int64
+	CSIndex() int32
+	IncreaseCSIndex() int32
 }
 
 // Cryptor is the interface for the cryptor.
@@ -81,7 +81,7 @@ func WithStartTime(st int64) Option {
 	}
 }
 
-func WithCSIndex(i int64) Option {
+func WithCSIndex(i int32) Option {
 	return func(s *session) {
 		s.csIndex = newIndexInfo(i)
 	}
@@ -107,11 +107,11 @@ func NewSession(userId int64, color string, status int64, opts ...Option) Sessio
 	return s
 }
 
-func (s *session) IncreaseCSIndex() int64 {
+func (s *session) IncreaseCSIndex() int32 {
 	return s.csIndex.Increase()
 }
 
-func (s *session) CSIndex() int64 {
+func (s *session) CSIndex() int32 {
 	return s.csIndex.Load()
 }
 
@@ -148,11 +148,11 @@ func (s *session) SetClientIP(ip string) {
 }
 
 type indexInfo struct {
-	start int64
-	index atomic.Int64
+	start int32
+	index atomic.Int32
 }
 
-func newIndexInfo(start int64) *indexInfo {
+func newIndexInfo(start int32) *indexInfo {
 	i := &indexInfo{
 		start: start,
 	}
@@ -161,10 +161,10 @@ func newIndexInfo(start int64) *indexInfo {
 	return i
 }
 
-func (i *indexInfo) Increase() int64 {
+func (i *indexInfo) Increase() int32 {
 	return i.index.Add(1)
 }
 
-func (i *indexInfo) Load() int64 {
+func (i *indexInfo) Load() int32 {
 	return i.index.Load()
 }
