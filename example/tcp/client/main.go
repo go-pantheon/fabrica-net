@@ -11,6 +11,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/example/tcp/message"
 	tcp "github.com/go-pantheon/fabrica-net/tcp/client"
+	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
 	"golang.org/x/sync/errgroup"
@@ -19,7 +20,12 @@ import (
 var ErrSendFinished = errors.New("send finished")
 
 func main() {
-	cli := tcp.NewClient(1, tcp.Bind("127.0.0.1:17101"))
+	handshakePack, err := handshakePack()
+	if err != nil {
+		panic(err)
+	}
+
+	cli := tcp.NewClient(1, "127.0.0.1:17101", handshakePack, tcp.WithAuthFunc(authFunc))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -34,20 +40,12 @@ func main() {
 		}
 	}()
 
-	authorizedSign := make(chan struct{})
-
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			if err := sendAuth(cli); err != nil {
-				return err
-			}
-
-			<-authorizedSign
-
 			return sendEcho(cli)
 		}
 	})
@@ -56,12 +54,6 @@ func main() {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			if err := recvAuth(cli); err != nil {
-				return err
-			}
-
-			close(authorizedSign)
-
 			return recvEcho(cli)
 		}
 	})
@@ -89,34 +81,26 @@ func main() {
 	}
 }
 
-func sendAuth(cli *tcp.Client) error {
+func handshakePack() (xnet.Pack, error) {
 	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, []byte("Hi!"), 0)
 
 	authPack, err := json.Marshal(authMsg)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "marshal auth pack failed")
 	}
 
-	if err := cli.Send(authPack); err != nil {
-		return err
-	}
-
-	log.Infof("[send] auth %s", authMsg)
-
-	return nil
+	return authPack, nil
 }
 
-func recvAuth(cli *tcp.Client) error {
-	authRecvPack := <-cli.Receive()
-
-	authRecvMsg := &message.Packet{}
-	if err := json.Unmarshal(authRecvPack, authRecvMsg); err != nil {
-		return errors.Wrap(err, "unmarshal auth recv pack failed")
+func authFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
+	authMsg := &message.Packet{}
+	if err := json.Unmarshal(pack, authMsg); err != nil {
+		return nil, errors.Wrap(err, "unmarshal auth pack failed")
 	}
 
-	log.Infof("[recv] auth %s", authRecvMsg)
+	log.Infof("[recv] auth %s", authMsg)
 
-	return nil
+	return xnet.DefaultSession(), nil
 }
 
 func sendEcho(cli *tcp.Client) error {

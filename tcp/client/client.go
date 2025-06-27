@@ -22,38 +22,43 @@ var ErrTimeout = errors.New("i/o timeout")
 // Option is a function that configures the client.
 type Option func(c *Client)
 
-func Bind(bind string) Option {
-	return func(s *Client) {
-		s.bind = bind
+func WithAuthFunc(authFunc AuthFunc) Option {
+	return func(c *Client) {
+		c.authFunc = authFunc
 	}
 }
 
-func Cryptor(cryptor xnet.Cryptor) Option {
-	return func(s *Client) {
-		s.cryptor = cryptor
-	}
+type AuthFunc func(ctx context.Context, pack xnet.Pack) (xnet.Session, error)
+
+func defaultAuthFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
+	return xnet.DefaultSession(), nil
 }
 
 type Client struct {
 	xsync.Stoppable
 
-	Id   int64
-	bind string
+	Id      int64
+	bind    string
+	session xnet.Session
+
+	handshakePack xnet.Pack
+	authFunc      AuthFunc
 
 	conn   *net.TCPConn
 	reader *bufio.Reader
 	writer *bufio.Writer
 
-	cryptor xnet.Cryptor
-
 	receivedPackChan chan xnet.Pack
 }
 
-func NewClient(id int64, opts ...Option) *Client {
+func NewClient(id int64, bind string, handshakePack xnet.Pack, opts ...Option) *Client {
 	c := &Client{
-		Stoppable: xsync.NewStopper(time.Second * 10),
-		cryptor:   xnet.NewUnCryptor(),
-		Id:        id,
+		Stoppable:     xsync.NewStopper(time.Second * 10),
+		Id:            id,
+		bind:          bind,
+		session:       xnet.DefaultSession(),
+		handshakePack: handshakePack,
+		authFunc:      defaultAuthFunc,
 	}
 
 	for _, o := range opts {
@@ -82,8 +87,12 @@ func (c *Client) Start(ctx context.Context) (err error) {
 	c.reader = bufio.NewReader(conn)
 	c.writer = bufio.NewWriter(conn)
 
+	if err = c.handshake(ctx, c.handshakePack); err != nil {
+		return err
+	}
+
 	c.GoAndQuickStop(fmt.Sprintf("tcp.client.receive.id=%d", c.Id), func() error {
-		return c.receive(ctx)
+		return c.run(ctx)
 	}, func() error {
 		return c.Stop(ctx)
 	})
@@ -93,7 +102,27 @@ func (c *Client) Start(ctx context.Context) (err error) {
 	return nil
 }
 
-func (c *Client) receive(ctx context.Context) error {
+func (c *Client) handshake(ctx context.Context, pack xnet.Pack) (err error) {
+	if err = c.Send(pack); err != nil {
+		return err
+	}
+
+	pack, free, err := codec.Decode(c.reader)
+	if err != nil {
+		return err
+	}
+
+	defer free()
+
+	c.session, err = c.authFunc(ctx, pack)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) run(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		select {
@@ -125,13 +154,29 @@ func (c *Client) receiveLoop(ctx context.Context) error {
 
 			defer free()
 
-			if pack, err = c.cryptor.Decrypt(pack); err != nil {
+			if pack, err = c.session.Decrypt(pack); err != nil {
 				return err
 			}
 
 			c.receivedPackChan <- pack
 		}
 	}
+}
+
+func (c *Client) Send(pack xnet.Pack) (err error) {
+	if c.OnStopping() {
+		return xsync.ErrIsStopped
+	}
+
+	if pack, err = c.session.Encrypt(pack); err != nil {
+		return err
+	}
+
+	return codec.Encode(c.writer, pack)
+}
+
+func (c *Client) Receive() <-chan xnet.Pack {
+	return c.receivedPackChan
 }
 
 func (c *Client) Stop(ctx context.Context) (err error) {
@@ -150,20 +195,4 @@ func (c *Client) Stop(ctx context.Context) (err error) {
 
 		return err
 	})
-}
-
-func (c *Client) Send(pack xnet.Pack) (err error) {
-	if c.OnStopping() {
-		return xsync.ErrIsStopped
-	}
-
-	if pack, err = c.cryptor.Encrypt(pack); err != nil {
-		return err
-	}
-
-	return codec.Encode(c.writer, pack)
-}
-
-func (c *Client) Receive() <-chan xnet.Pack {
-	return c.receivedPackChan
 }

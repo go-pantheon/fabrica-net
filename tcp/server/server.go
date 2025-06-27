@@ -25,12 +25,6 @@ type Option func(o *Server)
 
 type WrapperFunc func(ctx context.Context, uid int64, color string) error
 
-func Bind(bind string) Option {
-	return func(s *Server) {
-		s.bind = bind
-	}
-}
-
 func WithConf(conf conf.Config) Option {
 	return func(s *Server) {
 		s.conf = conf
