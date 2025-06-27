@@ -81,6 +81,12 @@ func WithStartTime(st int64) Option {
 	}
 }
 
+func WithCSIndex(i int64) Option {
+	return func(s *session) {
+		s.csIndex = newIndexInfo(i)
+	}
+}
+
 // NewSession creates a new session.
 //
 // userId: the user id of the session.

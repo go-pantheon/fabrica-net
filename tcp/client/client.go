@@ -196,3 +196,7 @@ func (c *Client) Stop(ctx context.Context) (err error) {
 		return err
 	})
 }
+
+func (c *Client) Session() xnet.Session {
+	return c.session
+}
