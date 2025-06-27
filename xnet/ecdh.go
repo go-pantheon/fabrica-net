@@ -28,7 +28,26 @@ func NewUnECDH() ECDHable {
 	}
 }
 
-func NewECDHInfo(targetPub [32]byte) (ECDHable, error) {
+func NewECDHInfo(selfPri [32]byte, targetPub [32]byte) (ECDHable, error) {
+	selfPub, err := ecdh.ComputePubKey(selfPri)
+	if err != nil {
+		return nil, err
+	}
+
+	sharedKey, err := ecdh.ComputeSharedKey(selfPri, targetPub)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ecdhInfo{
+		selfPri:   selfPri,
+		selfPub:   selfPub,
+		targetPub: targetPub,
+		sharedKey: sharedKey,
+	}, nil
+}
+
+func NewECDHInfoWithGenSelfPair(targetPub [32]byte) (ECDHable, error) {
 	selfPri, selfPub, err := ecdh.GenKeyPair()
 	if err != nil {
 		return nil, err
