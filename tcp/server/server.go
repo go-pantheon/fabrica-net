@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -275,13 +276,20 @@ func (s *Server) delWorker(wid uint64) {
 
 func (s *Server) Stop(ctx context.Context) (err error) {
 	return s.TurnOff(func() error {
+		wg := sync.WaitGroup{}
+
 		s.workerManager.Walk(func(w *internal.Worker) (continued bool) {
-			if stopErr := w.Stop(ctx); stopErr != nil {
-				err = errors.JoinUnsimilar(err, stopErr)
-			}
+			wg.Add(1)
+
+			xsync.Go(fmt.Sprintf("tcp.Server.stopWorker.%d", w.WID()), func() error {
+				defer wg.Done()
+				return w.Stop(ctx)
+			})
 
 			return true
 		})
+
+		wg.Wait()
 
 		log.Infof("[tcp.Server] stopped.")
 

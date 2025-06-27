@@ -2,10 +2,11 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/go-pantheon/fabrica-net/xnet"
-	"github.com/go-pantheon/fabrica-util/errors"
+	"github.com/go-pantheon/fabrica-util/xsync"
 )
 
 type CreateTunnelFunc func(ctx context.Context, tunnelType int32, objectId int64) (xnet.Tunnel, error)
@@ -77,11 +78,18 @@ func (h *tunnelManager) stop(ctx context.Context) (err error) {
 	for tp, tg := range h.tunnelGroups {
 		delete(h.tunnelGroups, tp)
 
+		wg := sync.WaitGroup{}
+
 		for _, t := range tg {
-			if stopErr := t.Stop(ctx); stopErr != nil {
-				err = errors.JoinUnsimilar(err, stopErr)
-			}
+			wg.Add(1)
+
+			xsync.Go(fmt.Sprintf("tunnelManager.stopTunnel.%d", t.Type()), func() error {
+				defer wg.Done()
+				return t.Stop(ctx)
+			})
 		}
+
+		wg.Wait()
 	}
 
 	return nil
