@@ -30,12 +30,6 @@ type Cryptor interface {
 	Decrypt(data Pack) (Pack, error)
 }
 
-type ECDHable interface {
-	ClientPublicKey() []byte
-	ServerPublicKey() []byte
-	SharedKey() []byte
-}
-
 var _ Session = (*session)(nil)
 
 type session struct {
