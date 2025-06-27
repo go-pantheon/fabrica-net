@@ -6,7 +6,7 @@ import (
 
 type ECDHable interface {
 	TargetPublicKey() []byte
-	ServerPublicKey() []byte
+	SelfPublicKey() []byte
 	SharedKey() []byte
 }
 
@@ -51,7 +51,7 @@ func (e *ecdhInfo) TargetPublicKey() []byte {
 	return ecdh.KeyToBytes(&e.targetPub)
 }
 
-func (e *ecdhInfo) ServerPublicKey() []byte {
+func (e *ecdhInfo) SelfPublicKey() []byte {
 	return ecdh.KeyToBytes(&e.selfPub)
 }
 
