@@ -8,6 +8,7 @@ import (
 type Session interface {
 	Cryptor
 	ECDHable
+	RouteTableRenewal
 
 	UID() int64
 	SID() int64
@@ -30,19 +31,25 @@ type Cryptor interface {
 	Decrypt(data Pack) (Pack, error)
 }
 
+type RouteTableRenewal interface {
+	NextRenewTime() time.Time
+	UpdateNextRenewTime(t time.Time)
+}
+
 var _ Session = (*session)(nil)
 
 type session struct {
 	Cryptor
 	ECDHable
 
-	userID    int64
-	serverID  int64
-	clientIP  string
-	color     string
-	status    int64
-	startTime int64
-	csIndex   *indexInfo
+	userID      int64
+	serverID    int64
+	clientIP    string
+	color       string
+	status      int64
+	startTime   int64
+	csIndex     *indexInfo
+	nextRenewAt time.Time
 }
 
 // DefaultSession creates a new session with default values.
@@ -145,6 +152,14 @@ func (s *session) ClientIP() string {
 
 func (s *session) SetClientIP(ip string) {
 	s.clientIP = ip
+}
+
+func (s *session) NextRenewTime() time.Time {
+	return s.nextRenewAt
+}
+
+func (s *session) UpdateNextRenewTime(t time.Time) {
+	s.nextRenewAt = t
 }
 
 type indexInfo struct {
