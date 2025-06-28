@@ -14,8 +14,7 @@ import (
 	"github.com/go-kratos/kratos/v2/transport"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
-	"github.com/go-pantheon/fabrica-net/internal/ip"
-	"github.com/go-pantheon/fabrica-net/xcontext"
+	"github.com/go-pantheon/fabrica-net/internal/util"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
@@ -152,7 +151,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 
-	xcontext.SetDeadlineWithContext(ctx, listener, "TcpListener")
+	util.SetDeadlineWithContext(ctx, listener, "TcpListener")
 
 	s.listener = listener
 	widGener := &atomic.Uint64{}
@@ -235,7 +234,7 @@ func (s *Server) work(ctx context.Context, conn *net.TCPConn, wid uint64) (err e
 		if err != nil {
 			err = errors.WithMessagef(err, "wid=%d uid=%d color=%s status=%d remote-addr=%s local-addr=%s",
 				w.WID(), w.UID(), w.Color(), w.Status(),
-				xcontext.RemoteAddr(conn), xcontext.LocalAddr(conn))
+				util.RemoteAddr(conn), util.LocalAddr(conn))
 		}
 	}()
 
@@ -382,7 +381,7 @@ func (s *Server) Broadcast(ctx context.Context, pack []byte) (err error) {
 }
 
 func (s *Server) Endpoint() (string, error) {
-	addr, err := ip.Extract(s.bind, s.listener)
+	addr, err := util.Extract(s.bind, s.listener)
 	if err != nil {
 		return "", err
 	}

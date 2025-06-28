@@ -1,6 +1,7 @@
 package xnet
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 )
@@ -8,17 +9,10 @@ import (
 type Session interface {
 	Cryptor
 	ECDHable
+	Metadata
 	RouteTableRenewal
 
-	UID() int64
-	SID() int64
-	Color() string
-	Status() int64
 	StartTime() int64
-
-	ClientIP() string
-	SetClientIP(ip string)
-
 	CSIndex() int32
 	IncreaseCSIndex() int32
 }
@@ -36,17 +30,27 @@ type RouteTableRenewal interface {
 	UpdateNextRenewTime(t time.Time)
 }
 
+type Metadata interface {
+	UID() int64
+	SID() int64
+	Color() string
+	Status() int64
+	ClientIP() string
+	SetClientIP(ip string)
+	LogInfo() string
+}
+
 var _ Session = (*session)(nil)
 
 type session struct {
 	Cryptor
 	ECDHable
 
-	userID      int64
-	serverID    int64
-	clientIP    string
+	uid         int64
+	sid         int64
 	color       string
 	status      int64
+	clientIP    string
 	startTime   int64
 	csIndex     *indexInfo
 	nextRenewAt time.Time
@@ -66,7 +70,7 @@ type Option func(s *session)
 
 func WithSID(sid int64) Option {
 	return func(s *session) {
-		s.serverID = sid
+		s.sid = sid
 	}
 }
 
@@ -107,7 +111,7 @@ func NewSession(userId int64, color string, status int64, opts ...Option) Sessio
 		opt(s)
 	}
 
-	s.userID = userId
+	s.uid = userId
 	s.color = color
 	s.status = status
 
@@ -127,11 +131,11 @@ func (s *session) StartTime() int64 {
 }
 
 func (s *session) UID() int64 {
-	return s.userID
+	return s.uid
 }
 
 func (s *session) SID() int64 {
-	return s.serverID
+	return s.sid
 }
 
 func (s *session) Color() string {
@@ -160,6 +164,10 @@ func (s *session) NextRenewTime() time.Time {
 
 func (s *session) UpdateNextRenewTime(t time.Time) {
 	s.nextRenewAt = t
+}
+
+func (s *session) LogInfo() string {
+	return fmt.Sprintf("uid=%d sid=%d color=%s status=%d ip=%s", s.UID(), s.SID(), s.Color(), s.Status(), s.ClientIP())
 }
 
 type indexInfo struct {

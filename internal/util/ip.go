@@ -1,7 +1,7 @@
 // Package ip provides utilities for IP address operations, including
 // detection of internal IPs, extracting addresses from connections,
 // and client IP identification in request contexts.
-package ip
+package util
 
 import (
 	"context"
@@ -29,6 +29,32 @@ var (
 	// ErrIPComponentOutOfRange is returned when an IP component is out of valid range.
 	ErrIPComponentOutOfRange = errors.New("IP component out of range")
 )
+
+func RemoteAddr(conn net.Conn) string {
+	if conn == nil {
+		return ""
+	}
+
+	addr := conn.RemoteAddr()
+	if addr == nil {
+		return ""
+	}
+
+	return addr.String()
+}
+
+func LocalAddr(conn net.Conn) string {
+	if conn == nil {
+		return ""
+	}
+
+	addr := conn.LocalAddr()
+	if addr == nil {
+		return ""
+	}
+
+	return addr.String()
+}
 
 // InternalIP returns the first detected internal IPv4 address.
 // Returns an empty string if no internal IP could be determined.

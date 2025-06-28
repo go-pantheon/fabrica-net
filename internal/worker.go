@@ -12,8 +12,8 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal/codec"
+	"github.com/go-pantheon/fabrica-net/internal/util"
 	"github.com/go-pantheon/fabrica-net/tunnel"
-	"github.com/go-pantheon/fabrica-net/xcontext"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
@@ -44,7 +44,7 @@ type Worker struct {
 	readFilter  middleware.Middleware
 	writeFilter middleware.Middleware
 
-	replyChan chan xnet.Pack
+	sendChan chan xnet.Pack
 }
 
 func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worker, referer string,
@@ -61,7 +61,7 @@ func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worke
 		referer:       referer,
 		readFilter:    readFilter,
 		writeFilter:   writeFilter,
-		replyChan:     make(chan xnet.Pack, conf.ReplyChanSize),
+		sendChan:      make(chan xnet.Pack, conf.ReplyChanSize),
 	}
 
 	w.createTunnelFunc = func(ctx context.Context, tp int32, oid int64) (xnet.Tunnel, error) {
@@ -118,21 +118,13 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return err
 	}
 
-	ss.SetClientIP(xcontext.RemoteAddr(w.conn))
+	ss.SetClientIP(util.RemoteAddr(w.conn))
 	w.session = ss
 
 	return nil
 }
 
 func (w *Worker) Run(ctx context.Context) error {
-	ctx = xcontext.SetUID(ctx, w.UID())
-	ctx = xcontext.SetSID(ctx, w.SID())
-	ctx = xcontext.SetOID(ctx, w.UID())
-	ctx = xcontext.SetColor(ctx, w.Color())
-	ctx = xcontext.SetStatus(ctx, w.Status())
-	ctx = xcontext.SetGateReferer(ctx, w.referer, w.WID())
-	ctx = xcontext.SetClientIP(ctx, w.session.ClientIP())
-
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		select {
@@ -144,7 +136,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	})
 	eg.Go(func() error {
 		return xsync.Run(func() error {
-			return w.replyLoop(ctx)
+			return w.sendLoop(ctx)
 		})
 	})
 	eg.Go(func() error {
@@ -161,12 +153,12 @@ func (w *Worker) Run(ctx context.Context) error {
 	return eg.Wait()
 }
 
-func (w *Worker) replyLoop(ctx context.Context) error {
+func (w *Worker) sendLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case pack := <-w.replyChan:
+		case pack := <-w.sendChan:
 			if err := w.write(ctx, pack); err != nil {
 				return err
 			}
@@ -230,7 +222,7 @@ func (w *Worker) Push(ctx context.Context, out xnet.Pack) error {
 		return errors.New("push msg len <= 0")
 	}
 
-	w.replyChan <- out
+	w.sendChan <- out
 
 	return nil
 }
@@ -307,7 +299,7 @@ func (w *Worker) Stop(ctx context.Context) (err error) {
 			err = errors.Join(err, stopErr)
 		}
 
-		close(w.replyChan)
+		close(w.sendChan)
 
 		if writerErr := w.writer.Flush(); writerErr != nil {
 			err = errors.Join(err, writerErr)
@@ -316,7 +308,7 @@ func (w *Worker) Stop(ctx context.Context) (err error) {
 		if connCloseErr := w.conn.Close(); connCloseErr != nil {
 			err = errors.Join(err, connCloseErr)
 
-			xcontext.SetDeadlineWithContext(ctx, w.conn, fmt.Sprintf("wid=%d", w.WID()))
+			util.SetDeadlineWithContext(ctx, w.conn, fmt.Sprintf("wid=%d", w.WID()))
 		}
 
 		return err

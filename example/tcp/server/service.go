@@ -70,12 +70,12 @@ func (s *Service) CreateAppTunnel(ctx context.Context, ss xnet.Session, tp int32
 }
 
 func (s *Service) OnConnected(ctx context.Context, ss xnet.Session) (err error) {
-	log.Debugf("on connected. uid=%d sid=%d color=%s status=%d ip=%s", ss.UID(), ss.SID(), ss.Color(), ss.Status(), ss.ClientIP())
+	log.Debugf("on connected. %s", ss.LogInfo())
 	return nil
 }
 
 func (s *Service) OnDisconnect(ctx context.Context, ss xnet.Session) (err error) {
-	log.Debugf("on disconnect. uid=%d sid=%d color=%s status=%d ip=%s", ss.UID(), ss.SID(), ss.Color(), ss.Status(), ss.ClientIP())
+	log.Debugf("on disconnect. %s", ss.LogInfo())
 	return nil
 }
 

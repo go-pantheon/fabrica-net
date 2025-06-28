@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/internal/codec"
-	"github.com/go-pantheon/fabrica-net/xcontext"
+	"github.com/go-pantheon/fabrica-net/internal/util"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
@@ -81,7 +81,7 @@ func (c *Client) Start(ctx context.Context) (err error) {
 		return errors.Wrapf(err, "connect failed. addr=%s", c.bind)
 	}
 
-	xcontext.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", c.Id))
+	util.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", c.Id))
 
 	c.conn = conn
 	c.reader = bufio.NewReader(conn)

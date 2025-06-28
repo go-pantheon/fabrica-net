@@ -13,6 +13,8 @@ type Worker interface {
 	xsync.Stoppable
 	TunnelManager
 	Pusher
+
+	WID() uint64
 }
 
 // Pusher is an interface that provides the ability to push data through a tunnel.
