@@ -200,3 +200,7 @@ func (c *Client) Stop(ctx context.Context) (err error) {
 func (c *Client) Session() xnet.Session {
 	return c.session
 }
+
+func (c *Client) Bind() string {
+	return c.bind
+}
