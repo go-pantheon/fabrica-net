@@ -183,12 +183,16 @@ func (c *Client) Stop(ctx context.Context) (err error) {
 	return c.TurnOff(func() error {
 		close(c.receivedPackChan)
 
-		if flushErr := c.writer.Flush(); flushErr != nil {
-			err = errors.Join(err, flushErr)
+		if c.writer != nil {
+			if flushErr := c.writer.Flush(); flushErr != nil {
+				err = errors.Join(err, flushErr)
+			}
 		}
 
-		if closeErr := c.conn.Close(); closeErr != nil {
-			err = errors.Join(err, closeErr)
+		if c.conn != nil {
+			if closeErr := c.conn.Close(); closeErr != nil {
+				err = errors.Join(err, closeErr)
+			}
 		}
 
 		log.Infof("[tcp.client] %d stopped.", c.Id)
