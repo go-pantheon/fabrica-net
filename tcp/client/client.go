@@ -91,7 +91,7 @@ func (c *Client) Start(ctx context.Context) (err error) {
 		return err
 	}
 
-	c.GoAndQuickStop(fmt.Sprintf("tcp.client.receive.id=%d", c.Id), func() error {
+	c.GoAndStop(fmt.Sprintf("tcp.client.receive.id-%d", c.Id), func() error {
 		return c.run(ctx)
 	}, func() error {
 		return c.Stop(ctx)

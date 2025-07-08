@@ -158,7 +158,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	for i := range s.workerSize {
 		aid := i
-		s.GoAndQuickStop(fmt.Sprintf("tcp.Server.acceptLoop.%d", aid), func() error {
+		s.GoAndStop(fmt.Sprintf("tcp.Server.acceptLoop-%d", aid), func() error {
 			return s.acceptLoop(ctx, widGener)
 		}, func() error {
 			return s.Stop(ctx)

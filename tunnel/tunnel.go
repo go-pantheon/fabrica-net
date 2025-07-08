@@ -37,7 +37,7 @@ func NewTunnel(ctx context.Context, pusher xnet.Pusher, app xnet.AppTunnel) *Tun
 		csChan:    make(chan xnet.TunnelMessage, 1024),
 	}
 
-	t.GoAndQuickStop(fmt.Sprintf("gate.Tunnel-%d-%d-%d", t.UID(), t.Type(), t.OID()), func() error {
+	t.GoAndStop(fmt.Sprintf("gate.Tunnel-%d-%d-%d", t.UID(), t.Type(), t.OID()), func() error {
 		return t.run(ctx)
 	}, func() error {
 		return t.Stop(ctx)

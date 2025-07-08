@@ -1,23 +1,23 @@
 GOCMD=GO111MODULE=on CGO_ENABLED=0 go
 GOBUILD=${GOCMD} build
 
-# golangci-lint
-LINTER := bin/golangci-lint
-TOOLS_SHELL="./.hack/tools.sh"
-
-$(LINTER):
-	curl -SL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.1.1
-
 .PHONY: init
 # Initialize environment
 init:
 	pre-commit install
-	go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
+	go install github.com/google/wire/cmd/wire@latest
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install github.com/envoyproxy/protoc-gen-validate@latest
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@latest
+	go install github.com/google/gnostic/cmd/protoc-gen-openapi@latest
+	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-errors/v2@latest
 
 .PHONY: test
 # Run tests
 test:
-	go test -v ./... -cover
+	go test -race ./...
 
 .PHONY: vet
 # Run go vet
@@ -32,13 +32,12 @@ lint:
 .PHONY: license-check
 # Check licenses of dependencies
 license-check:
-	./.hack/licenses-check
+	./hack/licenses-check
 
 .PHONY: license-report
 # Generate license report
 license-report:
-	./.hack/licenses-generate
-.PHONY: test-coverage
+	./hack/licenses-generate
 
 # Show help
 help:
