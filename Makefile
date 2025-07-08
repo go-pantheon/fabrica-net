@@ -17,7 +17,7 @@ init:
 .PHONY: test
 # Run tests
 test:
-	go test -race ./...
+	go test -race -cover ./...
 
 .PHONY: vet
 # Run go vet
