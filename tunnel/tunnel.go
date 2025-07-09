@@ -81,7 +81,11 @@ func (t *Tunnel) csLoop(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case cs := <-t.csChan:
+		case cs, ok := <-t.csChan:
+			if !ok {
+				return errors.New("cs channel closed")
+			}
+
 			if err := t.CSHandle(cs); err != nil {
 				return err
 			}

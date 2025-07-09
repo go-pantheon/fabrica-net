@@ -158,7 +158,11 @@ func (w *Worker) sendLoop(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case pack := <-w.sendChan:
+		case pack, ok := <-w.sendChan:
+			if !ok {
+				return errors.New("send channel closed")
+			}
+
 			if err := w.write(ctx, pack); err != nil {
 				return err
 			}

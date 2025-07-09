@@ -8,6 +8,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/example/tcp/message"
 	"github.com/go-pantheon/fabrica-net/xnet"
+	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
 )
 
@@ -37,19 +38,31 @@ func newEchoTunnel(ss xnet.Session) *EchoTunnel {
 func (t *EchoTunnel) CSHandle(msg xnet.TunnelMessage) error {
 	t.log.Infof("[recv] echo %s", msg)
 
+	return t.handle(msg)
+}
+
+func (t *EchoTunnel) SCHandle() (xnet.TunnelMessage, error) {
+	msg, ok := <-t.scChan
+	if !ok {
+		return nil, errors.New("sc channel closed")
+	}
+
+	t.log.Infof("[send] echo %s", msg)
+
+	return msg, nil
+}
+
+func (t *EchoTunnel) handle(msg xnet.TunnelMessage) error {
+	if t.OnStopping() {
+		return errors.New("tunnel is stopping")
+	}
+
 	sc := message.NewTunnelMessage(msg.GetMod(), msg.GetSeq(), msg.GetObj(), msg.GetIndex(), msg.GetData(), msg.GetDataVersion())
 	sc.Data = []byte("Hello Bob!")
 
 	t.scChan <- sc
 
 	return nil
-}
-
-func (t *EchoTunnel) SCHandle() (xnet.TunnelMessage, error) {
-	msg := <-t.scChan
-	t.log.Infof("[send] echo %s", msg)
-
-	return msg, nil
 }
 
 func (t *EchoTunnel) PacketToTunnelMsg(packet xnet.PacketMessage) (to xnet.TunnelMessage) {
