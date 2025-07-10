@@ -19,14 +19,12 @@ type Server struct {
 }
 
 type Worker struct {
-	ReaderBufSize         int
-	ReplyChanSize         int
-	HandshakeTimeout      time.Duration
-	RequestIdleTimeout    time.Duration
-	WaitMainTunnelTimeout time.Duration
-	StopTimeout           time.Duration
-	TunnelGroupSize       int
-	TickInterval          time.Duration
+	ReplyChanSize      int
+	HandshakeTimeout   time.Duration
+	RequestIdleTimeout time.Duration
+	StopTimeout        time.Duration
+	TunnelGroupSize    int
+	TickInterval       time.Duration
 }
 
 type Bucket struct {
@@ -36,24 +34,22 @@ type Bucket struct {
 func Default() Config {
 	tcp := Server{
 		WorkerSize:   runtime.NumCPU(),
-		WriteBufSize: 30000,
-		ReadBufSize:  30000,
+		WriteBufSize: 8192,
+		ReadBufSize:  8192,
 		KeepAlive:    true,
 	}
 
 	protocol := Worker{
-		ReaderBufSize:         8192,
-		ReplyChanSize:         1024,
-		HandshakeTimeout:      time.Second * 10,
-		RequestIdleTimeout:    time.Second * 60,
-		WaitMainTunnelTimeout: time.Second * 30,
-		StopTimeout:           time.Second * 3,
-		TunnelGroupSize:       32,
-		TickInterval:          time.Second * 10,
+		ReplyChanSize:      1024,
+		HandshakeTimeout:   time.Second * 10,
+		RequestIdleTimeout: time.Second * 60,
+		StopTimeout:        time.Second * 3,
+		TunnelGroupSize:    32,
+		TickInterval:       time.Second * 10,
 	}
 
 	bucket := Bucket{
-		BucketSize: 128,
+		BucketSize: 256,
 	}
 
 	return Config{

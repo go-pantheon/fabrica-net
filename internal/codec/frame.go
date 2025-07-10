@@ -5,13 +5,13 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/go-pantheon/fabrica-net/internal/bufpool"
+	"github.com/go-pantheon/fabrica-net/internal/ringpool"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
 )
 
 var (
-	pool *bufpool.SyncPool
+	pool ringpool.Pool
 
 	ErrShortRead      = errors.New("short read")
 	ErrShortWrite     = errors.New("short write")
@@ -19,38 +19,31 @@ var (
 )
 
 func init() {
-	minsize := 64
-
-	if err := InitReaderPool([]int{
-		4,
-		minsize,
-		minsize * 2,
-		minsize * 4,
-		minsize * 8,
-		minsize * 16,
-		minsize * 24,
-		minsize * 32,
-		minsize * 48,
-		minsize * 64,
-		minsize * 96,
-		minsize * 128,
-		minsize * 192,
-		minsize * 256,
-		minsize * 384,
-		minsize * 512,
-		minsize * 768,
-	}); err != nil {
-		panic("failed to initialize slab pool: " + err.Error())
+	sizeCapacityMap := map[int]uint64{
+		4:    65536 * 32, // 4bytes * 65536 * 32 = 16MB
+		64:   65536 * 8,  // 64bytes * 65536 * 8 = 32MB
+		128:  32768 * 8,  // 128bytes * 32768 * 8 = 32MB
+		256:  16384 * 8,  // 256bytes * 16384 * 8 = 32MB
+		512:  8192 * 8,   // 512bytes * 8192 * 8 = 32MB
+		1024: 4096 * 8,   // 1kb * 4096 * 8 = 32MB
+		4096: 1024 * 8,   // 4kb * 1024 * 8 = 32MB
 	}
-}
+	// Total memory: 224MB for ring buffers
+	// Total capacity: 1M buffers for burst handling
 
-func InitReaderPool(thresholds []int) error {
-	p, err := bufpool.New(thresholds)
+	p, err := ringpool.NewMultiSizeRingPool(sizeCapacityMap)
 	if err != nil {
-		return err
+		panic("failed to initialize ring pool: " + err.Error())
 	}
 
 	pool = p
+}
+
+func InitRingPool(sizeCapacityMap map[int]uint64) (err error) {
+	pool, err = ringpool.NewMultiSizeRingPool(sizeCapacityMap)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
