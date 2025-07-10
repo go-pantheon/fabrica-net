@@ -34,6 +34,8 @@ func defaultAuthFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) 
 	return xnet.DefaultSession(), nil
 }
 
+var _ xnet.Client = (*Client)(nil)
+
 type Client struct {
 	xsync.Stoppable
 

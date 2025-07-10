@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
-	"github.com/go-kratos/kratos/v2/transport"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/internal/util"
@@ -80,7 +80,7 @@ const (
 	stopTimeout = time.Second * 30
 )
 
-var _ transport.Server = (*Server)(nil)
+var _ xnet.Server = (*Server)(nil)
 
 type Server struct {
 	xsync.Stoppable
@@ -324,7 +324,7 @@ func (s *Server) WIDList() []uint64 {
 	return ids
 }
 
-func (s *Server) Push(ctx context.Context, uid int64, pack []byte) error {
+func (s *Server) Push(ctx context.Context, uid int64, pack xnet.Pack) error {
 	if s.OnStopping() {
 		return xsync.ErrIsStopped
 	}
@@ -341,13 +341,13 @@ func (s *Server) Push(ctx context.Context, uid int64, pack []byte) error {
 	return w.Push(ctx, pack)
 }
 
-func (s *Server) BatchPush(ctx context.Context, uids []int64, pack []byte) (err error) {
+func (s *Server) Multicast(ctx context.Context, uids []int64, pack xnet.Pack) (err error) {
 	if s.OnStopping() {
 		return xsync.ErrIsStopped
 	}
 
 	if len(pack) == 0 {
-		return errors.New("push group msg len <= 0")
+		return errors.New("multicast msg len <= 0")
 	}
 
 	workers := s.workerManager.GetByUIDs(uids)
@@ -360,7 +360,7 @@ func (s *Server) BatchPush(ctx context.Context, uids []int64, pack []byte) (err 
 	return nil
 }
 
-func (s *Server) Broadcast(ctx context.Context, pack []byte) (err error) {
+func (s *Server) Broadcast(ctx context.Context, pack xnet.Pack) (err error) {
 	if s.OnStopping() {
 		return xsync.ErrIsStopped
 	}
@@ -380,11 +380,11 @@ func (s *Server) Broadcast(ctx context.Context, pack []byte) (err error) {
 	return nil
 }
 
-func (s *Server) Endpoint() (string, error) {
+func (s *Server) Endpoint() (*url.URL, error) {
 	addr, err := util.Extract(s.bind, s.listener)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return fmt.Sprintf("tcp://%s", addr), nil
+	return url.Parse(fmt.Sprintf("tcp://%s", addr))
 }
