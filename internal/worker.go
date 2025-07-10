@@ -47,7 +47,7 @@ type Worker struct {
 	sendChan chan xnet.Pack
 }
 
-func NewWorker(wid uint64, conn *net.TCPConn, logger log.Logger, conf conf.Worker, referer string,
+func NewWorker(wid uint64, conn net.Conn, logger log.Logger, conf conf.Worker, referer string,
 	readFilter, writeFilter middleware.Middleware, svc xnet.Service) *Worker {
 	w := &Worker{
 		Stoppable:     xsync.NewStopper(conf.StopTimeout),
