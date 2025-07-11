@@ -1,4 +1,4 @@
-package codec
+package frame
 
 import (
 	"bufio"
@@ -37,14 +37,17 @@ func TestEncodeDecodeWithRingPool(t *testing.T) {
 
 			// Encode
 			var buf bytes.Buffer
-			writer := bufio.NewWriter(&buf)
 
-			err := Encode(writer, xnet.Pack(tc.data))
+			codec := &Codec{
+				w: bufio.NewWriter(&buf),
+				r: bufio.NewReader(&buf),
+			}
+
+			err := codec.Encode(xnet.Pack(tc.data))
 			require.NoError(t, err)
 
 			// Decode
-			reader := bytes.NewReader(buf.Bytes())
-			decoded, free, err := Decode(reader)
+			decoded, free, err := codec.Decode()
 			require.NoError(t, err)
 
 			defer free()
@@ -57,24 +60,26 @@ func TestEncodeDecodeWithRingPool(t *testing.T) {
 
 //nolint:paralleltest
 func TestDecodeInvalidPacket(t *testing.T) {
-	// Test with invalid packet length
 	var buf bytes.Buffer
-	writer := bufio.NewWriter(&buf)
+
+	c := &Codec{
+		w: bufio.NewWriter(&buf),
+		r: bufio.NewReader(&buf),
+	}
 
 	// Write invalid length (too large)
-	invalidLen := xnet.MaxPackSize + 100
-	_, err := writer.Write([]byte{
+	invalidLen := xnet.MaxPackSize + 1000
+	_, err := c.w.Write([]byte{
 		byte(invalidLen >> 24),
 		byte(invalidLen >> 16),
 		byte(invalidLen >> 8),
 		byte(invalidLen),
 	})
 	require.NoError(t, err)
-	err = writer.Flush()
+	err = c.w.Flush()
 	require.NoError(t, err)
 
-	reader := bytes.NewReader(buf.Bytes())
-	_, _, err = Decode(reader)
+	_, _, err = c.Decode()
 	assert.ErrorIs(t, err, ErrInvalidPackLen)
 }
 
@@ -87,22 +92,24 @@ func BenchmarkEncodeDecodeWithRingPool(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		var buf bytes.Buffer
-		writer := bufio.NewWriter(&buf)
+
+		c := &Codec{
+			w: bufio.NewWriter(&buf),
+			r: bufio.NewReader(&buf),
+		}
 
 		for pb.Next() {
 			buf.Reset()
-			writer.Reset(&buf)
+			c.w.Reset(&buf)
 
 			// Encode
-			err := Encode(writer, xnet.Pack(data))
+			err := c.Encode(xnet.Pack(data))
 			if err != nil {
 				b.Fatal(err)
 			}
 
 			// Decode
-			reader := bytes.NewReader(buf.Bytes())
-
-			decoded, free, err := Decode(reader)
+			decoded, free, err := c.Decode()
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -117,7 +124,7 @@ func BenchmarkEncodeDecodeWithRingPool(b *testing.B) {
 	})
 }
 
-func TestInitRingPool(t *testing.T) {
+func TestInitTcpRingPool(t *testing.T) {
 	t.Parallel()
 	// Test custom configuration
 	customConfig := map[int]uint64{
@@ -126,20 +133,23 @@ func TestInitRingPool(t *testing.T) {
 		128: 128,
 	}
 
-	err := InitRingPool(customConfig)
+	err := InitTcpRingPool(customConfig)
 	require.NoError(t, err)
 
 	// Test allocation with custom config
 	testData := make([]byte, 50) // Should use 64-byte pool
 
 	var buf bytes.Buffer
-	writer := bufio.NewWriter(&buf)
 
-	err = Encode(writer, xnet.Pack(testData))
+	c := &Codec{
+		w: bufio.NewWriter(&buf),
+		r: bufio.NewReader(&buf),
+	}
+
+	err = c.Encode(xnet.Pack(testData))
 	require.NoError(t, err)
 
-	reader := bytes.NewReader(buf.Bytes())
-	decoded, free, err := Decode(reader)
+	decoded, free, err := c.Decode()
 	require.NoError(t, err)
 
 	defer free()

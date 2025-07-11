@@ -1,4 +1,4 @@
-package tunnel
+package internal
 
 import (
 	"context"
@@ -29,7 +29,7 @@ type Tunnel struct {
 	recordPushErrCount   int       // the count of continuous push error in the last 10 seconds
 }
 
-func NewTunnel(ctx context.Context, pusher xnet.Pusher, app xnet.AppTunnel) *Tunnel {
+func newTunnel(ctx context.Context, pusher xnet.Pusher, app xnet.AppTunnel) *Tunnel {
 	t := &Tunnel{
 		Stoppable: xsync.NewStopper(time.Second * 10),
 		AppTunnel: app,

@@ -11,7 +11,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/client"
 	"github.com/go-pantheon/fabrica-net/example/message"
-	tcp "github.com/go-pantheon/fabrica-net/tcp/client"
+	ws "github.com/go-pantheon/fabrica-net/websocket/client"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
@@ -23,16 +23,18 @@ var ErrSendFinished = errors.New("send finished")
 func main() {
 	handshakePack, err := handshakePack()
 	if err != nil {
-		panic(err)
+		log.Errorf("failed to create handshake pack: %+v", err)
+		return
 	}
 
-	cli := tcp.NewClient(1, "127.0.0.1:17101", handshakePack, client.WithAuthFunc(authFunc))
+	cli := ws.NewClient(1, "ws://localhost:8080/ws", handshakePack, client.WithAuthFunc(authFunc))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	if err := cli.Start(ctx); err != nil {
-		panic(err)
+		log.Errorf("failed to start client: %+v", err)
+		return
 	}
 
 	defer func() {
@@ -104,7 +106,7 @@ func authFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
 	return xnet.DefaultSession(), nil
 }
 
-func sendEcho(cli *tcp.Client) error {
+func sendEcho(cli *ws.Client) error {
 	for i := range 10 {
 		msg := message.NewPacket(message.ModEcho, 0, 1, int32(i), []byte("Hello Alice!"), 0)
 
@@ -124,7 +126,7 @@ func sendEcho(cli *tcp.Client) error {
 	return ErrSendFinished
 }
 
-func recvEcho(cli *tcp.Client) error {
+func recvEcho(cli *ws.Client) error {
 	for pack := range cli.Receive() {
 		msg := &message.Packet{}
 		if err := json.Unmarshal(pack, msg); err != nil {

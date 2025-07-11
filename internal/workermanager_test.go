@@ -41,7 +41,7 @@ func TestNewWorkerManager(t *testing.T) {
 				BucketSize: tt.bucketSize,
 			}
 
-			bs := NewWorkerManager(c)
+			bs := newWorkerManager(c)
 			assert.Equal(t, tt.wantSize, len(bs.buckets))
 		})
 	}
@@ -53,7 +53,7 @@ func TestWorkerManager_BasicOperations(t *testing.T) {
 	c := conf.Bucket{
 		BucketSize: 16,
 	}
-	bs := NewWorkerManager(c)
+	bs := newWorkerManager(c)
 
 	// Test Put and Get
 	w1 := newTestWorker(1, 100)
@@ -82,7 +82,7 @@ func TestWorkerManager_UIDOperations(t *testing.T) {
 	c := conf.Bucket{
 		BucketSize: 16,
 	}
-	bs := NewWorkerManager(c)
+	bs := newWorkerManager(c)
 
 	w1 := newTestWorker(1, 100)
 	w2 := newTestWorker(2, 200)
@@ -110,7 +110,7 @@ func TestWorkerManager_ConcurrentOperations(t *testing.T) {
 	c := conf.Bucket{
 		BucketSize: 16,
 	}
-	bs := NewWorkerManager(c)
+	bs := newWorkerManager(c)
 
 	// Create multiple workers
 	workers := make([]*Worker, 100)
@@ -147,7 +147,7 @@ func TestWorkerManager_Walk(t *testing.T) {
 	c := conf.Bucket{
 		BucketSize: 16,
 	}
-	bs := NewWorkerManager(c)
+	bs := newWorkerManager(c)
 
 	// Add some workers
 	workers := make([]*Worker, 5)
@@ -182,7 +182,7 @@ func BenchmarkWorkerManager_Operations(b *testing.B) {
 	c := conf.Bucket{
 		BucketSize: 16,
 	}
-	bs := NewWorkerManager(c)
+	bs := newWorkerManager(c)
 
 	// Prepare test data
 	workers := make([]*Worker, 1000)
@@ -229,7 +229,7 @@ func BenchmarkWorkerManager_Operations(b *testing.B) {
 }
 
 func BenchmarkWorkerManager_Concurrent(b *testing.B) {
-	bs := NewWorkerManager(conf.Default().Bucket)
+	bs := newWorkerManager(conf.Default().Bucket)
 
 	// Prepare test data
 	workers := make([]*Worker, 1000)
@@ -440,7 +440,7 @@ func benchmarkBuckets(b *testing.B, workers []*Worker) {
 	c := conf.Bucket{
 		BucketSize: 128,
 	}
-	buckets := NewWorkerManager(c)
+	buckets := newWorkerManager(c)
 
 	for i := range len(workers) {
 		buckets.Put(workers[i])
@@ -488,7 +488,7 @@ func TestWorkerManager_ConcurrencySafety(t *testing.T) {
 	c := conf.Bucket{
 		BucketSize: 16,
 	}
-	bs := NewWorkerManager(c)
+	bs := newWorkerManager(c)
 
 	const (
 		numWorkers    = 1000

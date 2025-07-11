@@ -18,7 +18,7 @@ type WorkerManager struct {
 	shardCount uint64
 }
 
-func NewWorkerManager(c conf.Bucket) *WorkerManager {
+func newWorkerManager(c conf.Bucket) *WorkerManager {
 	m := &WorkerManager{
 		buckets:    make([]*sync.Map, uint64(c.BucketSize)),
 		size:       &atomic.Int64{},

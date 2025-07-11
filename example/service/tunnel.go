@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-pantheon/fabrica-net/example/tcp/message"
+	"github.com/go-pantheon/fabrica-net/example/message"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
@@ -25,7 +25,7 @@ type EchoTunnel struct {
 	scChan chan xnet.TunnelMessage
 }
 
-func newEchoTunnel(ss xnet.Session) *EchoTunnel {
+func NewEchoTunnel(ss xnet.Session) *EchoTunnel {
 	return &EchoTunnel{
 		Stoppable: xsync.NewStopper(time.Second * 10),
 		log:       log.NewHelper(log.With(log.DefaultLogger, "module", "app.tunnel")),
@@ -36,7 +36,7 @@ func newEchoTunnel(ss xnet.Session) *EchoTunnel {
 }
 
 func (t *EchoTunnel) CSHandle(msg xnet.TunnelMessage) error {
-	t.log.Infof("[recv] echo %s", msg)
+	t.log.Infof("[RECV] echo %s", msg)
 
 	return t.handle(msg)
 }
@@ -47,7 +47,7 @@ func (t *EchoTunnel) SCHandle() (xnet.TunnelMessage, error) {
 		return nil, errors.New("sc channel closed")
 	}
 
-	t.log.Infof("[send] echo %s", msg)
+	t.log.Infof("[SEND] echo %s", msg)
 
 	return msg, nil
 }

@@ -7,11 +7,12 @@ import (
 	"syscall"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/go-pantheon/fabrica-net/example/service"
 	tcp "github.com/go-pantheon/fabrica-net/tcp/server"
 )
 
 func main() {
-	svc := newService()
+	svc := service.New()
 
 	svr, err := tcp.NewServer("0.0.0.0:17101", svc)
 	if err != nil {

@@ -6,9 +6,10 @@ import (
 )
 
 type Config struct {
-	Server Server
-	Worker Worker
-	Bucket Bucket
+	Server    Server
+	Worker    Worker
+	Bucket    Bucket
+	WebSocket WebSocket
 }
 
 type Server struct {
@@ -29,6 +30,14 @@ type Worker struct {
 
 type Bucket struct {
 	BucketSize int
+}
+
+type WebSocket struct {
+	ReadBufSize  int
+	WriteBufSize int
+	Origin       string
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
 }
 
 func Default() Config {
@@ -52,9 +61,18 @@ func Default() Config {
 		BucketSize: 256,
 	}
 
+	websocket := WebSocket{
+		ReadBufSize:  8192,
+		WriteBufSize: 8192,
+		Origin:       "*",
+		ReadTimeout:  time.Second * 5,
+		WriteTimeout: time.Second * 5,
+	}
+
 	return Config{
-		Server: tcp,
-		Worker: protocol,
-		Bucket: bucket,
+		Server:    tcp,
+		Worker:    protocol,
+		Bucket:    bucket,
+		WebSocket: websocket,
 	}
 }

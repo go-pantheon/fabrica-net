@@ -1,4 +1,4 @@
-package tcp
+package websocket
 
 import (
 	"github.com/go-pantheon/fabrica-net/client"
@@ -11,19 +11,19 @@ var _ xnet.Client = (*Client)(nil)
 type Client struct {
 	*internal.BaseClient
 
-	bind string
+	url string
 }
 
-func NewClient(id int64, bind string, handshakePack xnet.Pack, opts ...client.Option) *Client {
-	dialer := newDialer(id, bind)
+func NewClient(id int64, url string, handshakePack xnet.Pack, opts ...client.Option) *Client {
+	dialer := newDialer(url, "*")
 	baseClient := internal.NewBaseClient(id, handshakePack, dialer, opts...)
 
 	return &Client{
 		BaseClient: baseClient,
-		bind:       bind,
+		url:        url,
 	}
 }
 
-func (c *Client) Bind() string {
-	return c.bind
+func (c *Client) URL() string {
+	return c.url
 }

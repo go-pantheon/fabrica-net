@@ -1,0 +1,149 @@
+package frame
+
+import (
+	"encoding/binary"
+	"io"
+	"net"
+	"sync"
+
+	"github.com/go-pantheon/fabrica-net/codec"
+	"github.com/go-pantheon/fabrica-net/internal/ringpool"
+	"github.com/go-pantheon/fabrica-net/websocket/wsconn"
+	"github.com/go-pantheon/fabrica-net/xnet"
+	"github.com/go-pantheon/fabrica-util/errors"
+	"github.com/gorilla/websocket"
+)
+
+var (
+	once sync.Once
+	pool ringpool.Pool
+
+	ErrShortRead      = errors.New("short read")
+	ErrShortWrite     = errors.New("short write")
+	ErrInvalidPackLen = errors.New("invalid pack len")
+)
+
+func init() {
+	sizeCapacityMap := map[int]uint64{
+		64:   8192 * 2, // 64bytes * 8192 * 2 = 1MB
+		128:  8192,     // 128bytes * 8192 = 1MB
+		256:  4096,     // 256bytes * 4096 = 1MB
+		512:  2048,     // 512bytes * 2048 = 1MB
+		1024: 1024,     // 1kb * 1024 = 1MB
+		4096: 256,      // 4kb * 256 = 1MB
+	}
+
+	p, err := ringpool.NewMultiSizeRingPool(sizeCapacityMap)
+	if err != nil {
+		panic("failed to initialize websocket ring pool: " + err.Error())
+	}
+
+	pool = p
+}
+
+func InitWebSocketRingPool(sizeCapacityMap map[int]uint64) (err error) {
+	once.Do(func() {
+		pool, err = ringpool.NewMultiSizeRingPool(sizeCapacityMap)
+		if err != nil {
+			return
+		}
+	})
+
+	return nil
+}
+
+var _ codec.Codec = (*Codec)(nil)
+
+type Codec struct {
+	conn *wsconn.WebSocketConn
+}
+
+func New(conn net.Conn) (codec.Codec, error) {
+	wsconn, ok := conn.(*wsconn.WebSocketConn)
+	if !ok {
+		return nil, errors.New("conn is not a websocket connection")
+	}
+
+	return &Codec{
+		conn: wsconn,
+	}, nil
+}
+
+func (c *Codec) Encode(pack xnet.Pack) (err error) {
+	w, err := c.conn.NextWriter(wsconn.MessageType)
+	if err != nil {
+		return errors.Wrap(err, "create next writer failed")
+	}
+
+	defer func() {
+		if closeErr := w.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
+
+	packLen := xnet.PackLenSize + int32(len(pack))
+	if err := binary.Write(w, binary.BigEndian, packLen); err != nil {
+		return errors.Wrap(err, "write pack len failed")
+	}
+
+	n, err := w.Write(pack)
+	if err != nil {
+		return errors.Wrap(err, "write pack failed")
+	}
+
+	if n != len(pack) {
+		return ErrShortWrite
+	}
+
+	return nil
+}
+
+func (c *Codec) Decode() (pack xnet.Pack, free func(), err error) {
+	mt, r, err := c.conn.NextReader()
+	if err != nil {
+		// 正确的逻辑：CloseAbnormalClosure (1006) 应该被视为意外错误
+		// 只有 CloseGoingAway 和 CloseNormalClosure 才是预期的关闭
+		if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+			return nil, nil, errors.Wrap(err, "unexpected close error")
+		}
+
+		// 对于预期的关闭（如正常关闭或页面跳转），返回较温和的错误信息
+		return nil, nil, errors.Wrap(err, "connection closed")
+	}
+
+	if mt != wsconn.MessageType {
+		return nil, nil, wsconn.ErrInvalidFrameType
+	}
+
+	var totalLen int32
+	if err := binary.Read(r, binary.BigEndian, &totalLen); err != nil {
+		return nil, nil, errors.Wrap(err, "read pack len failed")
+	}
+
+	if totalLen < xnet.PackLenSize || totalLen > xnet.MaxPackSize {
+		return nil, nil, ErrInvalidPackLen
+	}
+
+	// 关键修复：实际数据长度 = 总长度 - 长度字段大小
+	packLen := totalLen - xnet.PackLenSize
+
+	buf := pool.Alloc(int(packLen))
+	free = func() {
+		pool.Free(buf)
+	}
+
+	n, err := io.ReadFull(r, buf)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "read pack failed")
+	}
+
+	if _, err = io.ReadAll(r); err != nil {
+		return nil, nil, errors.Wrap(err, "read pack failed")
+	}
+
+	if n < int(packLen) {
+		return nil, nil, ErrShortRead
+	}
+
+	return xnet.Pack(buf), free, nil
+}

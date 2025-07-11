@@ -1,19 +1,16 @@
 package internal
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"net"
 	"sync/atomic"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
+	"github.com/go-pantheon/fabrica-net/codec"
 	"github.com/go-pantheon/fabrica-net/conf"
-	"github.com/go-pantheon/fabrica-net/internal/codec"
 	"github.com/go-pantheon/fabrica-net/internal/util"
-	"github.com/go-pantheon/fabrica-net/tunnel"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
@@ -29,8 +26,7 @@ type Worker struct {
 
 	id        uint64
 	conn      net.Conn
-	reader    *bufio.Reader
-	writer    *bufio.Writer
+	codec     codec.Codec
 	connected atomic.Bool
 	session   xnet.Session
 
@@ -47,15 +43,15 @@ type Worker struct {
 	sendChan chan xnet.Pack
 }
 
-func NewWorker(wid uint64, conn net.Conn, logger log.Logger, conf conf.Worker, referer string,
-	readFilter, writeFilter middleware.Middleware, svc xnet.Service) *Worker {
+func newWorker(wid uint64, conn net.Conn, conf conf.Worker, referer string,
+	codec codec.Codec, readFilter, writeFilter middleware.Middleware, svc xnet.Service,
+) *Worker {
 	w := &Worker{
 		Stoppable:     xsync.NewStopper(conf.StopTimeout),
 		tunnelManager: newTunnelManager(conf.TunnelGroupSize),
 		id:            wid,
 		conn:          conn,
-		reader:        bufio.NewReader(conn),
-		writer:        bufio.NewWriter(conn),
+		codec:         codec,
 		conf:          conf,
 		svc:           svc,
 		referer:       referer,
@@ -70,7 +66,7 @@ func NewWorker(wid uint64, conn net.Conn, logger log.Logger, conf conf.Worker, r
 			return nil, err
 		}
 
-		return tunnel.NewTunnel(ctx, w, at), nil
+		return newTunnel(ctx, w, at), nil
 	}
 
 	w.session = xnet.DefaultSession()
@@ -103,7 +99,7 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return errors.Wrap(err, "set conn deadline before handshake failed")
 	}
 
-	in, free, err := codec.Decode(w.reader)
+	in, free, err := w.codec.Decode()
 	if err != nil {
 		return err
 	}
@@ -114,7 +110,7 @@ func (w *Worker) handshake(ctx context.Context) error {
 		return err
 	}
 
-	if err = codec.Encode(w.writer, out); err != nil {
+	if err = w.codec.Encode(out); err != nil {
 		return err
 	}
 
@@ -250,7 +246,7 @@ func (w *Worker) write(ctx context.Context, pack xnet.Pack) (err error) {
 		return err
 	}
 
-	return codec.Encode(w.writer, out.(xnet.Pack))
+	return w.codec.Encode(out.(xnet.Pack))
 }
 
 func (w *Worker) read(ctx context.Context) error {
@@ -262,7 +258,7 @@ func (w *Worker) read(ctx context.Context) error {
 		return errors.Wrap(err, "set conn deadline after handshake failed")
 	}
 
-	pack, free, err := codec.Decode(w.reader)
+	pack, free, err := w.codec.Decode()
 	if err != nil {
 		return err
 	}
@@ -304,10 +300,6 @@ func (w *Worker) Stop(ctx context.Context) (err error) {
 		}
 
 		close(w.sendChan)
-
-		if writerErr := w.writer.Flush(); writerErr != nil {
-			err = errors.Join(err, writerErr)
-		}
 
 		if connCloseErr := w.conn.Close(); connCloseErr != nil {
 			err = errors.Join(err, connCloseErr)
