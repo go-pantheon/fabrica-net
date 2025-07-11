@@ -57,6 +57,7 @@ func newWorker(wid uint64, conn net.Conn, conf conf.Worker, referer string,
 		referer:       referer,
 		readFilter:    readFilter,
 		writeFilter:   writeFilter,
+		session:       xnet.DefaultSession(),
 		sendChan:      make(chan xnet.Pack, conf.ReplyChanSize),
 	}
 
@@ -68,8 +69,6 @@ func newWorker(wid uint64, conn net.Conn, conf conf.Worker, referer string,
 
 		return newTunnel(ctx, w, at), nil
 	}
-
-	w.session = xnet.DefaultSession()
 
 	return w
 }
@@ -353,6 +352,10 @@ func (w *Worker) Status() int64 {
 	}
 
 	return w.session.Status()
+}
+
+func (w *Worker) Session() xnet.Session {
+	return w.session
 }
 
 func (w *Worker) Endpoint() string {

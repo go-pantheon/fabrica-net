@@ -3,6 +3,7 @@ package xnet
 import (
 	"context"
 	"io"
+	"net"
 
 	"github.com/go-pantheon/fabrica-util/xsync"
 )
@@ -15,6 +16,8 @@ type Worker interface {
 	Pusher
 
 	WID() uint64
+	Conn() net.Conn
+	Session() Session
 }
 
 // Pusher is an interface that provides the ability to push data through a tunnel.

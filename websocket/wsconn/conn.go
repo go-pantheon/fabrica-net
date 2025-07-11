@@ -58,8 +58,20 @@ func (c *WebSocketConn) Write(b []byte) (n int, err error) {
 }
 
 // Close implements net.Conn interface
-func (c *WebSocketConn) Close() error {
-	return c.conn.Close()
+func (c *WebSocketConn) Close() (err error) {
+	msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "conn closed")
+
+	if writeErr := c.conn.WriteMessage(websocket.CloseMessage, msg); writeErr != nil {
+		err = errors.Join(err, errors.Wrap(writeErr, "write close message failed"))
+	}
+
+	time.Sleep(1 * time.Millisecond)
+
+	if closeErr := c.conn.Close(); closeErr != nil {
+		err = errors.Join(err, errors.Wrap(closeErr, "close connection failed"))
+	}
+
+	return err
 }
 
 // LocalAddr implements net.Conn interface
@@ -97,4 +109,12 @@ func (c *WebSocketConn) NextWriter(mt int) (io.WriteCloser, error) {
 
 func (c *WebSocketConn) NextReader() (int, io.Reader, error) {
 	return c.conn.NextReader()
+}
+
+func (c *WebSocketConn) SetPongHandler(f func(string) error) {
+	c.conn.SetPongHandler(f)
+}
+
+func (c *WebSocketConn) SetReadLimit(limit int64) {
+	c.conn.SetReadLimit(limit)
 }

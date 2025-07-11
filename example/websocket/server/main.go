@@ -5,16 +5,20 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/example/service"
+	"github.com/go-pantheon/fabrica-net/server"
 	ws "github.com/go-pantheon/fabrica-net/websocket/server"
 )
 
 func main() {
 	svc := service.New()
 
-	svr, err := ws.NewServer(":8080", "/ws", svc)
+	svr, err := ws.NewServer(":8080", "/ws", svc,
+		server.WithReadLimit(1024*1024),
+		server.WithPongRenewal(time.Second*10))
 	if err != nil {
 		log.Errorf("failed to create server: %v", err)
 		return

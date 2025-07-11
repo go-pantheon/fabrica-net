@@ -42,9 +42,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, codec.Codec
 	}
 
 	header := http.Header{}
-	if d.origin != "" && d.origin != "*" {
-		header.Set("Origin", d.origin)
-	}
+	header.Set("Origin", d.origin)
 
 	c, resp, err := d.dialer.DialContext(ctx, u.String(), header)
 	if err != nil {

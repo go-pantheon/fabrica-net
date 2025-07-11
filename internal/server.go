@@ -117,7 +117,7 @@ func (s *BaseServer) work(ctx context.Context, wid uint64, conn net.Conn) (err e
 			err = errors.Join(err, closeErr)
 		}
 
-		if aferr := s.AfterDisconnectFunc()(ctx, w.UID(), w.Color()); aferr != nil {
+		if aferr := s.AfterDisconnect()(server.EmptyInspectorFunc)(ctx, w); aferr != nil {
 			err = errors.Join(err, aferr)
 		}
 
@@ -128,17 +128,17 @@ func (s *BaseServer) work(ctx context.Context, wid uint64, conn net.Conn) (err e
 		}
 	}()
 
-	if err = w.Start(ctx); err != nil {
+	if err := w.Start(ctx); err != nil {
 		return err
 	}
 
-	if err = s.addWorker(ctx, w); err != nil {
+	if err := s.addWorker(ctx, w); err != nil {
 		return err
 	}
 
 	defer s.delWorker(w.WID())
 
-	if err = s.AfterConnectFunc()(ctx, w.UID(), w.Color()); err != nil {
+	if err := s.AfterConnect()(server.EmptyInspectorFunc)(ctx, w); err != nil {
 		return err
 	}
 

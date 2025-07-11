@@ -117,7 +117,7 @@ func sendEcho(cli *tcp.Client) error {
 			return err
 		}
 
-		log.Infof("[send] echo %s", msg)
+		log.Infof("[SEND] echo %s", msg)
 		time.Sleep(time.Second * 1)
 	}
 
@@ -131,7 +131,7 @@ func recvEcho(cli *tcp.Client) error {
 			return errors.Wrap(err, "unmarshal echo recv pack failed")
 		}
 
-		log.Infof("[recv] echo %s", msg)
+		log.Infof("[RECV] echo %s", msg)
 	}
 
 	return nil

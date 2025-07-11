@@ -101,13 +101,10 @@ func (c *Codec) Encode(pack xnet.Pack) (err error) {
 func (c *Codec) Decode() (pack xnet.Pack, free func(), err error) {
 	mt, r, err := c.conn.NextReader()
 	if err != nil {
-		// 正确的逻辑：CloseAbnormalClosure (1006) 应该被视为意外错误
-		// 只有 CloseGoingAway 和 CloseNormalClosure 才是预期的关闭
 		if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
 			return nil, nil, errors.Wrap(err, "unexpected close error")
 		}
 
-		// 对于预期的关闭（如正常关闭或页面跳转），返回较温和的错误信息
 		return nil, nil, errors.Wrap(err, "connection closed")
 	}
 
@@ -124,7 +121,6 @@ func (c *Codec) Decode() (pack xnet.Pack, free func(), err error) {
 		return nil, nil, ErrInvalidPackLen
 	}
 
-	// 关键修复：实际数据长度 = 总长度 - 长度字段大小
 	packLen := totalLen - xnet.PackLenSize
 
 	buf := pool.Alloc(int(packLen))
@@ -134,10 +130,6 @@ func (c *Codec) Decode() (pack xnet.Pack, free func(), err error) {
 
 	n, err := io.ReadFull(r, buf)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "read pack failed")
-	}
-
-	if _, err = io.ReadAll(r); err != nil {
 		return nil, nil, errors.Wrap(err, "read pack failed")
 	}
 

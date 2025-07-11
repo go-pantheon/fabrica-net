@@ -101,7 +101,7 @@ func authFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
 		return nil, errors.Wrap(err, "unmarshal auth pack failed")
 	}
 
-	log.Infof("[recv] auth %s", authMsg)
+	log.Infof("[RECV] auth %s", authMsg)
 
 	return xnet.DefaultSession(), nil
 }
@@ -133,7 +133,7 @@ func recvEcho(cli *ws.Client) error {
 			return errors.Wrap(err, "unmarshal echo recv pack failed")
 		}
 
-		log.Infof("[recv] echo %s", msg)
+		log.Infof("[RECV] echo %s", msg)
 	}
 
 	return nil

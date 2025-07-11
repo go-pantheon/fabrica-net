@@ -2,11 +2,14 @@ package server
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-pantheon/fabrica-net/conf"
+	"github.com/go-pantheon/fabrica-net/websocket/wsconn"
+	"github.com/go-pantheon/fabrica-net/xnet"
 )
 
 type Option func(o *Options)
@@ -51,28 +54,56 @@ func WithWriteFilter(m middleware.Middleware) Option {
 	}
 }
 
-func WithAfterConnectFunc(f WrapperFunc) Option {
+func WithAfterConnect(f Inspector) Option {
 	return func(o *Options) {
-		o.afterConnectFunc = f
+		o.afterConnect = Wrap(o.afterConnect, f)
 	}
 }
 
-func WithAfterDisconnectFunc(f WrapperFunc) Option {
+func WithAfterDisconnect(f Inspector) Option {
 	return func(o *Options) {
-		o.afterDisconnectFunc = f
+		o.afterDisconnect = Wrap(o.afterDisconnect, f)
 	}
 }
 
-type WrapperFunc func(ctx context.Context, uid int64, color string) error
+func WithReadLimit(limit int64) Option {
+	return func(o *Options) {
+		o.afterConnect = Wrap(o.afterConnect, func(f InspectorFunc) InspectorFunc {
+			return func(ctx context.Context, w xnet.Worker) error {
+				if conn, ok := w.Conn().(*wsconn.WebSocketConn); ok {
+					conn.SetReadLimit(limit)
+				}
+
+				return f(ctx, w)
+			}
+		})
+	}
+}
+
+func WithPongRenewal(timeout time.Duration) Option {
+	return func(o *Options) {
+		o.afterConnect = Wrap(o.afterConnect, func(f InspectorFunc) InspectorFunc {
+			return func(ctx context.Context, w xnet.Worker) error {
+				if conn, ok := w.Conn().(*wsconn.WebSocketConn); ok {
+					conn.SetPongHandler(func(string) error {
+						return conn.SetReadDeadline(time.Now().Add(timeout))
+					})
+				}
+
+				return f(ctx, w)
+			}
+		})
+	}
+}
 
 type Options struct {
-	conf                conf.Config
-	logger              log.Logger
-	referer             string
-	afterConnectFunc    WrapperFunc
-	afterDisconnectFunc WrapperFunc
-	readFilter          middleware.Middleware
-	writeFilter         middleware.Middleware
+	conf            conf.Config
+	logger          log.Logger
+	referer         string
+	afterConnect    Inspector
+	afterDisconnect Inspector
+	readFilter      middleware.Middleware
+	writeFilter     middleware.Middleware
 }
 
 func NewOptions(opts ...Option) *Options {
@@ -85,12 +116,8 @@ func NewOptions(opts ...Option) *Options {
 		writeFilter: middleware.Chain(
 			recovery.Recovery(),
 		),
-		afterConnectFunc: func(ctx context.Context, uid int64, color string) error {
-			return nil
-		},
-		afterDisconnectFunc: func(ctx context.Context, uid int64, color string) error {
-			return nil
-		},
+		afterConnect:    emptyInspector,
+		afterDisconnect: emptyInspector,
 	}
 
 	for _, o := range opts {
@@ -112,12 +139,12 @@ func (o *Options) Referer() string {
 	return o.referer
 }
 
-func (o *Options) AfterConnectFunc() WrapperFunc {
-	return o.afterConnectFunc
+func (o *Options) AfterConnect() Inspector {
+	return o.afterConnect
 }
 
-func (o *Options) AfterDisconnectFunc() WrapperFunc {
-	return o.afterDisconnectFunc
+func (o *Options) AfterDisconnect() Inspector {
+	return o.afterDisconnect
 }
 
 func (o *Options) ReadFilter() middleware.Middleware {

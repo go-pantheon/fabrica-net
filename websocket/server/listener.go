@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"slices"
 	"sync/atomic"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -46,10 +47,8 @@ func newListener(bind string, path string, conf conf.Config) *listener {
 			ReadBufferSize:  conf.WebSocket.ReadBufSize,
 			WriteBufferSize: conf.WebSocket.WriteBufSize,
 			CheckOrigin: func(r *http.Request) bool {
-				if conf.WebSocket.Origin != "" && conf.WebSocket.Origin != "*" {
-					return r.Header.Get("Origin") == conf.WebSocket.Origin
-				}
-				return true
+				origin := r.Header.Get("Origin")
+				return slices.Contains(conf.WebSocket.AllowOrigins, origin)
 			},
 		},
 	}

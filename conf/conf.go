@@ -35,7 +35,7 @@ type Bucket struct {
 type WebSocket struct {
 	ReadBufSize  int
 	WriteBufSize int
-	Origin       string
+	AllowOrigins []string
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 }
@@ -64,7 +64,7 @@ func Default() Config {
 	websocket := WebSocket{
 		ReadBufSize:  8192,
 		WriteBufSize: 8192,
-		Origin:       "*",
+		AllowOrigins: []string{"*"},
 		ReadTimeout:  time.Second * 5,
 		WriteTimeout: time.Second * 5,
 	}
