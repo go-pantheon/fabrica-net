@@ -70,7 +70,7 @@ type BaseMessage interface {
 }
 
 type SmuxParam interface {
-	GetStreamId() int64
+	GetStreamId() int32
 	GetFragId() int32
 	GetFragCount() int32
 	GetFragIndex() int32
