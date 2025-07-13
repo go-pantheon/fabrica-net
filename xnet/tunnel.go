@@ -46,12 +46,12 @@ type TunnelManager interface {
 // into a ForwardMessage.
 type PacketMessage interface {
 	BaseMessage
+	SmuxParam
 }
 
 // TunnelMessage is an interface for messages that can be forwarded to another application
 type TunnelMessage interface {
 	BaseMessage
-	SmuxParam
 }
 
 type KCPTunnelMessage interface {
