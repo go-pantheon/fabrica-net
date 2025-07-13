@@ -62,6 +62,12 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 	for i := 0; i < d.conf.SmuxStreamSize; i++ {
 		stream, err := session.OpenStream()
 		if err != nil {
+			for _, wrapper := range wrappers {
+				if closeErr := wrapper.Conn.Close(); closeErr != nil {
+					err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed"))
+				}
+			}
+
 			if closeErr := conn.Close(); closeErr != nil {
 				err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed"))
 			}

@@ -84,6 +84,8 @@ func (l *Listener) Accept(ctx context.Context) (internal.ConnWrapper, error) {
 			if !l.conf.Smux {
 				return conn, nil
 			}
+
+			continue
 		}
 	}
 }
@@ -154,6 +156,8 @@ func (l *Listener) Stop(ctx context.Context) (err error) {
 
 			return true
 		})
+
+		wg.Wait()
 
 		close(l.streamChan)
 
