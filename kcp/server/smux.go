@@ -16,24 +16,24 @@ import (
 type Smux struct {
 	xsync.Stoppable
 
-	id       int64
-	conn     *kcpgo.UDPSession
-	session  *smux.Session
-	widGener *internal.WIDGenerator
+	id           int64
+	conn         *kcpgo.UDPSession
+	session      *smux.Session
+	widGenerator *internal.WIDGenerator
 }
 
-func newSmux(id int64, conn *kcpgo.UDPSession, conf conf.KCP, widGener *internal.WIDGenerator) (*Smux, error) {
+func newSmux(id int64, conn *kcpgo.UDPSession, conf conf.KCP, widGen *internal.WIDGenerator) (*Smux, error) {
 	session, err := smux.Server(conn, newSmuxConfig(conf))
 	if err != nil {
 		return nil, errors.Wrapf(err, "create smux session failed")
 	}
 
 	return &Smux{
-		Stoppable: xsync.NewStopper(10 * time.Second),
-		id:        id,
-		conn:      conn,
-		session:   session,
-		widGener:  widGener,
+		Stoppable:    xsync.NewStopper(10 * time.Second),
+		id:           id,
+		conn:         conn,
+		session:      session,
+		widGenerator: widGen,
 	}, nil
 }
 
@@ -61,7 +61,7 @@ func (s *Smux) accept() (internal.ConnWrapper, error) {
 		return internal.ConnWrapper{}, errors.Wrapf(err, "accept smux stream failed")
 	}
 
-	return internal.NewConnWrapper(s.widGener.Next(), stream, frame.New(stream)), nil
+	return internal.NewConnWrapper(s.widGenerator.Next(), stream, frame.New(stream)), nil
 }
 
 func (s *Smux) stop() error {

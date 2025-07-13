@@ -36,7 +36,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 
 	if err := d.configureConn(conn); err != nil {
 		if closeErr := conn.Close(); closeErr != nil {
-			err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed"))
+			err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed. target=%s", target))
 		}
 
 		return nil, nil, err

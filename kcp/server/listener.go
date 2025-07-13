@@ -27,19 +27,19 @@ type Listener struct {
 	widGener   *internal.WIDGenerator
 	streamChan chan internal.ConnWrapper
 
-	smuxIDGener *atomic.Int64
-	smuxMap     *sync.Map
+	smuxIDGenerator *atomic.Int64
+	smuxSessions    *sync.Map
 }
 
 func newListener(bind string, conf conf.KCP) *Listener {
 	return &Listener{
-		Stoppable:   xsync.NewStopper(10 * time.Second),
-		bind:        bind,
-		conf:        conf,
-		widGener:    internal.NewWIDGenerator(internal.NetTypeKCP),
-		streamChan:  make(chan internal.ConnWrapper, 1024),
-		smuxIDGener: &atomic.Int64{},
-		smuxMap:     &sync.Map{},
+		Stoppable:       xsync.NewStopper(10 * time.Second),
+		bind:            bind,
+		conf:            conf,
+		widGener:        internal.NewWIDGenerator(internal.NetTypeKCP),
+		streamChan:      make(chan internal.ConnWrapper, 1024),
+		smuxIDGenerator: &atomic.Int64{},
+		smuxSessions:    &sync.Map{},
 	}
 }
 
@@ -116,19 +116,19 @@ func (l *Listener) accept(ctx context.Context) (internal.ConnWrapper, error) {
 }
 
 func (l *Listener) initSmux(ctx context.Context, conn *kcpgo.UDPSession) error {
-	id := l.smuxIDGener.Add(1)
+	id := l.smuxIDGenerator.Add(1)
 
 	smux, err := newSmux(id, conn, l.conf, l.widGener)
 	if err != nil {
 		return errors.Wrapf(err, "new smux failed")
 	}
 
-	l.smuxMap.Store(id, smux)
+	l.smuxSessions.Store(id, smux)
 
 	smux.GoAndStop(fmt.Sprintf("kcp.Listener.newSmux.id-%d", id), func() error {
 		return smux.start(ctx, l.streamChan)
 	}, func() error {
-		l.smuxMap.Delete(id)
+		l.smuxSessions.Delete(id)
 		return smux.stop()
 	})
 
@@ -139,7 +139,7 @@ func (l *Listener) Stop(ctx context.Context) (err error) {
 	return l.TurnOff(func() error {
 		var wg sync.WaitGroup
 
-		l.smuxMap.Range(func(key, value any) bool {
+		l.smuxSessions.Range(func(key, value any) bool {
 			wg.Add(1)
 
 			xsync.Go("kcp.Listener.Stop", func() error {
