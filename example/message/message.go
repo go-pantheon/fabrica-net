@@ -25,6 +25,10 @@ type Packet struct {
 	Index       int32  `json:"index"`
 	Data        []byte `json:"data"`
 	DataVersion uint64 `json:"data_version"`
+	StreamID    int64  `json:"stream_id"`
+	FragID      int32  `json:"frag_id"`
+	FragCount   int32  `json:"frag_count"`
+	FragIndex   int32  `json:"frag_index"`
 }
 
 func NewPacket(mod int32, seq int32, obj int64, index int32, data []byte, dataVersion uint64) *Packet {
@@ -60,6 +64,22 @@ func (m *Packet) GetIndex() int32 {
 
 func (m *Packet) GetDataVersion() uint64 {
 	return m.DataVersion
+}
+
+func (m *Packet) GetStreamID() int64 {
+	return m.StreamID
+}
+
+func (m *Packet) GetFragID() int32 {
+	return m.FragID
+}
+
+func (m *Packet) GetFragCount() int32 {
+	return m.FragCount
+}
+
+func (m *Packet) GetFragIndex() int32 {
+	return m.FragIndex
 }
 
 func (m *Packet) String() string {

@@ -51,6 +51,12 @@ type PacketMessage interface {
 // TunnelMessage is an interface for messages that can be forwarded to another application
 type TunnelMessage interface {
 	BaseMessage
+	SmuxParam
+}
+
+type KCPTunnelMessage interface {
+	BaseMessage
+	SmuxParam
 }
 
 // BaseMessage is an common interface for messages that for transmission
@@ -61,4 +67,11 @@ type BaseMessage interface {
 	GetData() []byte
 	GetDataVersion() uint64
 	GetIndex() int32
+}
+
+type SmuxParam interface {
+	GetStreamID() int64
+	GetFragID() int32
+	GetFragCount() int32
+	GetFragIndex() int32
 }
