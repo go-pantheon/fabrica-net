@@ -66,11 +66,11 @@ func (m *Packet) GetDataVersion() uint64 {
 	return m.DataVersion
 }
 
-func (m *Packet) GetStreamID() int64 {
+func (m *Packet) GetStreamId() int64 {
 	return m.StreamID
 }
 
-func (m *Packet) GetFragID() int32 {
+func (m *Packet) GetFragId() int32 {
 	return m.FragID
 }
 
