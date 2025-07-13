@@ -66,7 +66,7 @@ func New(conn net.Conn) (codec.Codec, error) {
 }
 
 func (c *Codec) Encode(pack xnet.Pack) error {
-	if err := binary.Write(c.w, binary.BigEndian, xnet.PackLenSize+int32(len(pack))); err != nil {
+	if err := binary.Write(c.w, binary.BigEndian, int32(len(pack))); err != nil {
 		return errors.Wrap(err, "write pack len failed")
 	}
 
@@ -87,16 +87,14 @@ func (c *Codec) Encode(pack xnet.Pack) error {
 }
 
 func (c *Codec) Decode() (pack xnet.Pack, free func(), err error) {
-	var totalLen int32
-	if err := binary.Read(c.r, binary.BigEndian, &totalLen); err != nil {
+	var packLen int32
+	if err := binary.Read(c.r, binary.BigEndian, &packLen); err != nil {
 		return nil, nil, errors.Wrap(err, "read pack len failed")
 	}
 
-	if totalLen < xnet.PackLenSize || totalLen > xnet.MaxPackSize {
+	if packLen <= 0 || packLen > xnet.MaxPackSize {
 		return nil, nil, ErrInvalidPackLen
 	}
-
-	packLen := totalLen - xnet.PackLenSize
 
 	buf := pool.Alloc(int(packLen))
 	free = func() {
