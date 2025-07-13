@@ -20,5 +20,6 @@ type Client interface {
 	Stop(ctx context.Context) error
 
 	Send(pack Pack) error
+	SendSmux(pack Pack, streamID int64) error
 	Receive() <-chan Pack
 }

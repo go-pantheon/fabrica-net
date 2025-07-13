@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/xnet"
 )
 
@@ -20,17 +21,25 @@ func WithAuthFunc(authFunc AuthFunc) Option {
 	}
 }
 
+func WithConf(conf conf.Config) Option {
+	return func(o *Options) {
+		o.conf = conf
+	}
+}
+
 func defaultAuthFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
 	return xnet.DefaultSession(), nil
 }
 
 type Options struct {
 	authFunc AuthFunc
+	conf     conf.Config
 }
 
 func NewOptions(opts ...Option) *Options {
 	o := &Options{
 		authFunc: defaultAuthFunc,
+		conf:     conf.Default(),
 	}
 
 	for _, opt := range opts {

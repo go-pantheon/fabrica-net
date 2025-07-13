@@ -7,7 +7,6 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/server"
-	"github.com/go-pantheon/fabrica-net/tcp/frame"
 	"github.com/go-pantheon/fabrica-net/xnet"
 )
 
@@ -21,9 +20,9 @@ type Server struct {
 
 func NewServer(bind string, svc xnet.Service, opts ...server.Option) (*Server, error) {
 	options := server.NewOptions(opts...)
-	listener := newListener(bind, options.Conf())
+	listener := newListener(bind, options.Conf().TCP)
 
-	baseServer, err := internal.NewBaseServer(listener, svc, frame.New, options)
+	baseServer, err := internal.NewBaseServer(listener, svc, options)
 	if err != nil {
 		return nil, err
 	}

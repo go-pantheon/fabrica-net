@@ -3,7 +3,6 @@ package frame
 import (
 	"encoding/binary"
 	"io"
-	"net"
 	"sync"
 
 	"github.com/go-pantheon/fabrica-net/codec"
@@ -58,15 +57,10 @@ type Codec struct {
 	conn *wsconn.WebSocketConn
 }
 
-func New(conn net.Conn) (codec.Codec, error) {
-	wsconn, ok := conn.(*wsconn.WebSocketConn)
-	if !ok {
-		return nil, errors.New("conn is not a websocket connection")
-	}
-
+func New(conn *wsconn.WebSocketConn) codec.Codec {
 	return &Codec{
-		conn: wsconn,
-	}, nil
+		conn: conn,
+	}
 }
 
 func (c *Codec) Encode(pack xnet.Pack) (err error) {

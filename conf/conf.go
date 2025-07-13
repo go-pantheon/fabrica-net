@@ -6,20 +6,43 @@ import (
 )
 
 type Config struct {
-	Server    Server
-	Worker    Worker
-	Bucket    Bucket
+	Worker Worker
+	Bucket Bucket
+
 	WebSocket WebSocket
+	TCP       TCP
+	KCP       KCP
 }
 
-type Server struct {
-	WorkerSize   int
+type TCP struct {
+	KeepAlive    bool
 	WriteBufSize int
 	ReadBufSize  int
-	KeepAlive    bool
+}
+
+type KCP struct {
+	WriteBufSize int
+	ReadBufSize  int
+	DataShards   int
+	ParityShards int
+
+	NoDelay    [4]int // nodelay, interval, resend, nc
+	WindowSize [2]int // sndwnd, rcvwnd
+	MTU        int    // MAX MTU for UDP networks
+	ACKNoDelay bool   // ACK immediately
+	WriteDelay bool   // immediate sending
+	DSCP       int    // EF (Expedited Forwarding) for low latency
+
+	Smux              bool
+	SmuxStreamSize    int
+	KeepAliveInterval time.Duration
+	KeepAliveTimeout  time.Duration
+	MaxFrameSize      int
+	MaxReceiveBuffer  int
 }
 
 type Worker struct {
+	WorkerSize         int
 	ReplyChanSize      int
 	HandshakeTimeout   time.Duration
 	RequestIdleTimeout time.Duration
@@ -41,14 +64,8 @@ type WebSocket struct {
 }
 
 func Default() Config {
-	tcp := Server{
-		WorkerSize:   runtime.NumCPU(),
-		WriteBufSize: 8192,
-		ReadBufSize:  8192,
-		KeepAlive:    true,
-	}
-
-	protocol := Worker{
+	worker := Worker{
+		WorkerSize:         runtime.NumCPU(),
 		ReplyChanSize:      1024,
 		HandshakeTimeout:   time.Second * 10,
 		RequestIdleTimeout: time.Second * 60,
@@ -69,10 +86,36 @@ func Default() Config {
 		WriteTimeout: time.Second * 5,
 	}
 
+	tcp := TCP{
+		KeepAlive:    true,
+		WriteBufSize: 8192,
+		ReadBufSize:  8192,
+	}
+
+	kcp := KCP{
+		WriteBufSize:      8192,
+		ReadBufSize:       8192,
+		DataShards:        10,
+		ParityShards:      3,
+		NoDelay:           [4]int{1, 10, 2, 1},
+		WindowSize:        [2]int{128, 128},
+		MTU:               1400,
+		ACKNoDelay:        true,
+		WriteDelay:        false,
+		DSCP:              46,
+		Smux:              true,
+		SmuxStreamSize:    3,
+		KeepAliveInterval: 10 * time.Second,
+		KeepAliveTimeout:  30 * time.Second,
+		MaxFrameSize:      4096,
+		MaxReceiveBuffer:  4 * 1024 * 1024,
+	}
+
 	return Config{
-		Server:    tcp,
-		Worker:    protocol,
+		Worker:    worker,
 		Bucket:    bucket,
 		WebSocket: websocket,
+		TCP:       tcp,
+		KCP:       kcp,
 	}
 }

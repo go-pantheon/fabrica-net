@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/go-pantheon/fabrica-net/codec"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/internal/util"
 	"github.com/go-pantheon/fabrica-net/tcp/frame"
@@ -26,7 +25,7 @@ func newDialer(id int64, bind string) *dialer {
 	}
 }
 
-func (d *dialer) Dial(ctx context.Context, target string) (net.Conn, codec.Codec, error) {
+func (d *dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.ConnWrapper, error) {
 	addr, err := net.ResolveTCPAddr("tcp", target)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "resolve addr failed. addr=%s", target)
@@ -39,12 +38,7 @@ func (d *dialer) Dial(ctx context.Context, target string) (net.Conn, codec.Codec
 
 	util.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", d.id))
 
-	codec, err := frame.New(conn)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "create codec failed. addr=%s", target)
-	}
-
-	return conn, codec, nil
+	return nil, []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, frame.New(conn))}, nil
 }
 
 func (d *dialer) Target() string {

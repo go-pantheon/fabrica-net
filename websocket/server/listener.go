@@ -5,11 +5,11 @@ import (
 	"net"
 	"net/http"
 	"slices"
-	"sync/atomic"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
+	"github.com/go-pantheon/fabrica-net/websocket/frame"
 	"github.com/go-pantheon/fabrica-net/websocket/wsconn"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
@@ -27,13 +27,8 @@ type listener struct {
 	server   *http.Server
 	upgrader websocket.Upgrader
 
-	widGener *atomic.Uint64
-	connChan chan connWrapper
-}
-
-type connWrapper struct {
-	conn net.Conn
-	wid  uint64
+	widGener *internal.WIDGenerator
+	connChan chan internal.ConnWrapper
 }
 
 func newListener(bind string, path string, conf conf.Config) *listener {
@@ -41,8 +36,8 @@ func newListener(bind string, path string, conf conf.Config) *listener {
 		bind:     bind,
 		path:     path,
 		conf:     conf,
-		widGener: &atomic.Uint64{},
-		connChan: make(chan connWrapper, 100),
+		widGener: internal.NewWIDGenerator(internal.NetTypeWebSocket),
+		connChan: make(chan internal.ConnWrapper, 1024),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  conf.WebSocket.ReadBufSize,
 			WriteBufferSize: conf.WebSocket.WriteBufSize,
@@ -86,17 +81,14 @@ func (l *listener) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wid := l.widGener.Add(1)
+	wid := l.widGener.Next()
 	wsConn := wsconn.NewWebSocketConn(conn)
+	codec := frame.New(wsConn)
 
 	select {
-	case l.connChan <- connWrapper{conn: wsConn, wid: wid}:
+	case l.connChan <- internal.NewConnWrapper(wid, wsConn, codec):
 	default:
 		log.Error("[websocket.Listener] connection channel full, dropping connection")
-
-		if err := conn.Close(); err != nil {
-			log.Errorf("[websocket.Listener] close connection failed: %+v", err)
-		}
 	}
 }
 
@@ -118,12 +110,12 @@ func (l *listener) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (l *listener) Accept(ctx context.Context, widGener *atomic.Uint64) (net.Conn, uint64, error) {
+func (l *listener) Accept(ctx context.Context) (internal.ConnWrapper, error) {
 	select {
 	case <-ctx.Done():
-		return nil, 0, ctx.Err()
+		return internal.ConnWrapper{}, ctx.Err()
 	case wrapper := <-l.connChan:
-		return wrapper.conn, wrapper.wid, nil
+		return wrapper, nil
 	}
 }
 

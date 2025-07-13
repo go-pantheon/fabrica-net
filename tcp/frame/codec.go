@@ -58,11 +58,11 @@ type Codec struct {
 	r *bufio.Reader
 }
 
-func New(conn net.Conn) (codec.Codec, error) {
+func New(conn net.Conn) codec.Codec {
 	return &Codec{
 		w: bufio.NewWriter(conn),
 		r: bufio.NewReader(conn),
-	}, nil
+	}
 }
 
 func (c *Codec) Encode(pack xnet.Pack) error {

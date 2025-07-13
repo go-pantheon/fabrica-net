@@ -30,27 +30,25 @@ type BaseServer struct {
 	workerSize    int
 	workerManager *WorkerManager
 
-	listener     Listener
-	newCodecFunc codec.NewCodecFunc
+	listener Listener
 
 	service xnet.Service
 }
 
-func NewBaseServer(listener Listener, svc xnet.Service, newCodecFunc codec.NewCodecFunc, options *server.Options) (*BaseServer, error) {
+func NewBaseServer(listener Listener, svc xnet.Service, options *server.Options) (*BaseServer, error) {
 	if options == nil {
 		options = server.NewOptions()
 	}
 
 	s := &BaseServer{
-		Stoppable:    xsync.NewStopper(stopTimeout),
-		Options:      options,
-		service:      svc,
-		listener:     listener,
-		newCodecFunc: newCodecFunc,
+		Stoppable: xsync.NewStopper(stopTimeout),
+		Options:   options,
+		service:   svc,
+		listener:  listener,
 	}
 
 	s.workerManager = newWorkerManager(s.Conf().Bucket)
-	s.workerSize = s.Conf().Server.WorkerSize
+	s.workerSize = s.Conf().Worker.WorkerSize
 
 	if err := s.listener.Start(context.Background()); err != nil {
 		return nil, err
@@ -88,27 +86,22 @@ func (s *BaseServer) acceptLoop(ctx context.Context) error {
 }
 
 func (s *BaseServer) accept(ctx context.Context) error {
-	conn, wid, err := s.listener.Accept(ctx, nil)
+	conn, err := s.listener.Accept(ctx)
 	if err != nil {
 		return errors.Wrapf(err, "accept failed")
 	}
 
-	xsync.Go(fmt.Sprintf("BaseServer.serve.%d", wid), func() error {
+	xsync.Go(fmt.Sprintf("BaseServer.serve.%d", conn.WID), func() error {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		return s.work(ctx, wid, conn)
+		return s.work(ctx, conn.WID, conn.Conn, conn.Codec)
 	})
 
 	return nil
 }
 
-func (s *BaseServer) work(ctx context.Context, wid uint64, conn net.Conn) (err error) {
-	codec, err := s.newCodecFunc(conn)
-	if err != nil {
-		return err
-	}
-
+func (s *BaseServer) work(ctx context.Context, wid uint64, conn net.Conn, codec codec.Codec) (err error) {
 	w := newWorker(wid, conn, s.Conf().Worker, s.Referer(), codec,
 		s.ReadFilter(), s.WriteFilter(), s.service)
 

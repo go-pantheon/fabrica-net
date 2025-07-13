@@ -15,7 +15,7 @@ type Client struct {
 }
 
 func NewClient(id int64, url string, handshakePack xnet.Pack, opts ...client.Option) *Client {
-	dialer := newDialer(url, "*")
+	dialer := newDialer(id, url, "*")
 	baseClient := internal.NewBaseClient(id, handshakePack, dialer, opts...)
 
 	return &Client{

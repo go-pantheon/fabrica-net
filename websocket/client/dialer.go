@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/go-pantheon/fabrica-net/codec"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/websocket/frame"
 	"github.com/go-pantheon/fabrica-net/websocket/wsconn"
@@ -18,13 +17,15 @@ import (
 var _ internal.Dialer = (*Dialer)(nil)
 
 type Dialer struct {
+	id     int64
 	url    string
 	dialer *websocket.Dialer
 	origin string
 }
 
-func newDialer(url string, origin string) *Dialer {
+func newDialer(id int64, url string, origin string) *Dialer {
 	return &Dialer{
+		id:     id,
 		url:    url,
 		origin: origin,
 		dialer: &websocket.Dialer{
@@ -35,7 +36,7 @@ func newDialer(url string, origin string) *Dialer {
 	}
 }
 
-func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, codec.Codec, error) {
+func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.ConnWrapper, error) {
 	u, err := url.Parse(target)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "parse url failed. url=%s", target)
@@ -58,13 +59,9 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, codec.Codec
 	}()
 
 	conn := wsconn.NewWebSocketConn(c)
+	codec := frame.New(conn)
 
-	codec, err := frame.New(conn)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "create codec failed. url=%s", target)
-	}
-
-	return conn, codec, nil
+	return nil, []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, codec)}, nil
 }
 
 func (d *Dialer) Target() string {
