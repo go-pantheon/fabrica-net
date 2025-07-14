@@ -10,7 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.10.0
 	github.com/xtaci/kcp-go/v5 v5.6.22
-	github.com/xtaci/smux v1.5.34
+	github.com/xtaci/smux v2.0.1+incompatible
 	golang.org/x/sync v0.16.0
 	google.golang.org/grpc v1.73.0
 )
