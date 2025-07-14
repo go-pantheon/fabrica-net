@@ -65,7 +65,7 @@ type WebSocket struct {
 
 func Default() Config {
 	worker := Worker{
-		WorkerSize:         runtime.NumCPU(),
+		WorkerSize:         runtime.NumCPU() * 2,
 		ReplyChanSize:      1024,
 		HandshakeTimeout:   time.Second * 10,
 		RequestIdleTimeout: time.Second * 60,
@@ -118,4 +118,30 @@ func Default() Config {
 		TCP:       tcp,
 		KCP:       kcp,
 	}
+}
+
+func MOBAConfig() Config {
+	config := Default()
+
+	config.KCP.WriteBufSize = 16384
+	config.KCP.ReadBufSize = 16384
+	config.KCP.DataShards = 8
+	config.KCP.ParityShards = 2
+	config.KCP.NoDelay = [4]int{1, 5, 2, 1}
+	config.KCP.WindowSize = [2]int{256, 256}
+	config.KCP.MTU = 1200
+	config.KCP.SmuxStreamSize = 4
+	config.KCP.KeepAliveInterval = 5 * time.Second
+	config.KCP.KeepAliveTimeout = 15 * time.Second
+	config.KCP.MaxFrameSize = 2048
+	config.KCP.MaxReceiveBuffer = 8 * 1024 * 1024
+
+	config.Worker.ReplyChanSize = 2048
+	config.Worker.HandshakeTimeout = 5 * time.Second
+	config.Worker.RequestIdleTimeout = 30 * time.Second
+	config.Worker.StopTimeout = 5 * time.Second
+	config.Worker.TunnelGroupSize = 64
+	config.Worker.TickInterval = 5 * time.Second
+
+	return config
 }

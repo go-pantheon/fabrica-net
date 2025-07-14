@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/go-pantheon/fabrica-net/codec"
 	"github.com/go-pantheon/fabrica-net/internal/ringpool"
@@ -18,6 +19,20 @@ var (
 	pool ringpool.Pool
 )
 
+var (
+	MOBAPoolConfig = map[int]uint64{
+		32:   16384, // 32B * 16384 = 512KB - Player inputs, heartbeats
+		64:   12288, // 64B * 12288 = 768KB - Quick commands, mini updates
+		128:  8192,  // 128B * 8192 = 1MB - Position sync, small state updates
+		256:  6144,  // 256B * 6144 = 1.5MB - Skill casts, medium updates
+		512:  4096,  // 512B * 4096 = 2MB - Game state chunks
+		1024: 2048,  // 1KB * 2048 = 2MB - Batch updates, larger game events
+		2048: 1024,  // 2KB * 1024 = 2MB - Map section updates
+		4096: 512,   // 4KB * 512 = 2MB - Large batch operations
+		8192: 256,   // 8KB * 256 = 2MB - Asset data, replay chunks
+	}
+)
+
 func init() {
 	p, err := ringpool.Default()
 	if err != nil {
@@ -25,6 +40,7 @@ func init() {
 	}
 
 	pool = p
+	lastStatsReset.Store(time.Now())
 }
 
 func InitKcpRingPool(sizeCapacityMap map[int]uint64) (err error) {
@@ -36,6 +52,11 @@ func InitKcpRingPool(sizeCapacityMap map[int]uint64) (err error) {
 	})
 
 	return nil
+}
+
+// InitMOBARingPool creates optimized pools for MOBA game traffic patterns
+func InitMOBARingPool() error {
+	return InitKcpRingPool(MOBAPoolConfig)
 }
 
 var _ codec.Codec = (*kcpCodec)(nil)
@@ -55,15 +76,21 @@ func New(conn net.Conn) codec.Codec {
 }
 
 func (c *kcpCodec) Encode(pack xnet.Pack) error {
+	totalEncodes.Add(1)
+	totalBytesOut.Add(uint64(len(pack)))
+
 	if err := binary.Write(c.writer, binary.BigEndian, int32(len(pack))); err != nil {
+		encodeErrors.Add(1)
 		return errors.Wrap(err, "write length failed")
 	}
 
 	if _, err := c.writer.Write(pack); err != nil {
+		encodeErrors.Add(1)
 		return errors.Wrap(err, "write data failed")
 	}
 
 	if err := c.writer.Flush(); err != nil {
+		encodeErrors.Add(1)
 		return errors.Wrap(err, "flush writer failed")
 	}
 
@@ -71,23 +98,36 @@ func (c *kcpCodec) Encode(pack xnet.Pack) error {
 }
 
 func (c *kcpCodec) Decode() (pack xnet.Pack, free func(), err error) {
-	var length int32
+	totalDecodes.Add(1)
 
+	var length int32
 	if err := binary.Read(c.reader, binary.BigEndian, &length); err != nil {
+		decodeErrors.Add(1)
 		return nil, nil, errors.Wrap(err, "read length failed")
 	}
 
 	if length <= 0 || length > xnet.MaxPackSize {
+		decodeErrors.Add(1)
 		return nil, nil, errors.Errorf("invalid pack length: %d", length)
 	}
 
+	totalBytesIn.Add(uint64(length))
+
 	buf := pool.Alloc(int(length))
+
+	if cap(buf) == int(length) {
+		poolHits.Add(1)
+	} else {
+		poolMisses.Add(1)
+	}
+
 	free = func() {
 		pool.Free(buf)
 	}
 
 	defer func() {
 		if err != nil {
+			decodeErrors.Add(1)
 			free()
 		}
 	}()
