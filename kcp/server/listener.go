@@ -137,29 +137,32 @@ func (l *Listener) initSmux(ctx context.Context, conn *kcpgo.UDPSession) error {
 
 func (l *Listener) Stop(ctx context.Context) (err error) {
 	return l.TurnOff(func() error {
-		var wg sync.WaitGroup
+		var (
+			wg      sync.WaitGroup
+			safeErr = &errors.SafeJoinError{}
+		)
 
 		l.smuxSessions.Range(func(key, value any) bool {
 			wg.Add(1)
 
-			xsync.Go("kcp.Listener.Stop", func() error {
+			if err := xsync.GoTimeout(ctx, fmt.Sprintf("kcp.Listener.stop.smux-%d", key), func(errChan chan<- error) {
 				defer wg.Done()
 
-				if smux, ok := value.(*Smux); ok {
-					if closeErr := smux.stop(); closeErr != nil {
-						err = errors.Join(err, errors.Wrapf(closeErr, "close smux failed"))
-					}
+				if closeErr := value.(*Smux).stop(); closeErr != nil {
+					safeErr.Join(errors.Wrapf(closeErr, "close smux failed"))
 				}
-
-				return nil
-			})
+			}, 10*time.Second); err != nil {
+				safeErr.Join(err)
+			}
 
 			return true
 		})
 
 		wg.Wait()
 
-		close(l.streamChan)
+		if safeErr.Error() != "" {
+			err = errors.Join(err, safeErr)
+		}
 
 		if l.listener != nil {
 			if closeErr := l.listener.Close(); closeErr != nil {

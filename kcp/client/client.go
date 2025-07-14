@@ -43,3 +43,8 @@ func (c *Client) Stop(ctx context.Context) error {
 	log.Infof("[kcp.Client] stopping")
 	return c.BaseClient.Stop(ctx)
 }
+
+// Target returns the target address for interface consistency
+func (c *Client) Target() string {
+	return c.target
+}

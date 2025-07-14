@@ -92,6 +92,12 @@ func (c *Codec) Decode() (pack xnet.Pack, free func(), err error) {
 		pool.Free(buf)
 	}
 
+	defer func() {
+		if err != nil {
+			free()
+		}
+	}()
+
 	n, err := io.ReadFull(c.r, buf)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "read pack failed")

@@ -45,23 +45,14 @@ func (s *Smux) start(ctx context.Context, streamChan chan internal.ConnWrapper) 
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			conn, err := s.accept()
+			stream, err := s.session.AcceptStream()
 			if err != nil {
 				return err
 			}
 
-			streamChan <- conn
+			streamChan <- internal.NewConnWrapper(s.widGenerator.Next(), stream, frame.New(stream))
 		}
 	}
-}
-
-func (s *Smux) accept() (internal.ConnWrapper, error) {
-	stream, err := s.session.AcceptStream()
-	if err != nil {
-		return internal.ConnWrapper{}, errors.Wrapf(err, "accept smux stream failed")
-	}
-
-	return internal.NewConnWrapper(s.widGenerator.Next(), stream, frame.New(stream)), nil
 }
 
 func (s *Smux) stop() error {

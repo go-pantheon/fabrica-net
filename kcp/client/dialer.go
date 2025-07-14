@@ -2,12 +2,15 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"time"
 
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/kcp/frame"
 	"github.com/go-pantheon/fabrica-util/errors"
+	"github.com/go-pantheon/fabrica-util/xsync"
 	kcpgo "github.com/xtaci/kcp-go/v5"
 	"github.com/xtaci/smux"
 )
@@ -29,9 +32,9 @@ func NewDialer(id int64, target string, conf conf.KCP) *Dialer {
 }
 
 func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.ConnWrapper, error) {
-	conn, err := kcpgo.DialWithOptions(target, nil, d.conf.DataShards, d.conf.ParityShards)
+	conn, err := d.dial(ctx, target, time.Second*10)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "kcp dial failed. target=%s", target)
+		return nil, nil, err
 	}
 
 	if err := d.configureConn(conn); err != nil {
@@ -46,9 +49,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 		return conn, []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, frame.New(conn))}, nil
 	}
 
-	smuxConfig := d.newSmuxConfig()
-
-	session, err := smux.Client(conn, smuxConfig)
+	session, err := smux.Client(conn, d.newSmuxConfig())
 	if err != nil {
 		if closeErr := conn.Close(); closeErr != nil {
 			err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed"))
@@ -59,26 +60,50 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 
 	wrappers := make([]internal.ConnWrapper, 0, d.conf.SmuxStreamSize)
 
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		for _, wrapper := range wrappers {
+			if closeErr := wrapper.Close(); closeErr != nil {
+				err = errors.JoinUnsimilar(err, errors.Wrapf(closeErr, "close stream during cleanup failed"))
+			}
+		}
+
+		if session != nil {
+			if closeErr := session.Close(); closeErr != nil {
+				err = errors.JoinUnsimilar(err, errors.Wrapf(closeErr, "close session during cleanup failed"))
+			}
+		}
+
+		if closeErr := conn.Close(); closeErr != nil {
+			err = errors.JoinUnsimilar(err, errors.Wrapf(closeErr, "close connection during cleanup failed"))
+		}
+	}()
+
 	for i := 0; i < d.conf.SmuxStreamSize; i++ {
-		stream, err := session.OpenStream()
-		if err != nil {
-			for _, wrapper := range wrappers {
-				if closeErr := wrapper.Conn.Close(); closeErr != nil {
-					err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed"))
-				}
-			}
-
-			if closeErr := conn.Close(); closeErr != nil {
-				err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed"))
-			}
-
-			return nil, nil, errors.Wrapf(err, "create smux stream failed")
+		stream, streamErr := session.OpenStream()
+		if streamErr != nil {
+			return nil, nil, errors.Wrapf(streamErr, "create smux stream %d failed", i)
 		}
 
 		wrappers = append(wrappers, internal.NewConnWrapper(uint64(d.id), stream, frame.New(stream)))
 	}
 
 	return conn, wrappers, nil
+}
+
+func (d *Dialer) dial(ctx context.Context, target string, timeout time.Duration) (conn *kcpgo.UDPSession, err error) {
+	err = xsync.GoTimeout(ctx, fmt.Sprintf("kcp.dial-%s", target), func(errChan chan<- error) {
+		conn, err = kcpgo.DialWithOptions(target, nil, d.conf.DataShards, d.conf.ParityShards)
+		if err != nil {
+			errChan <- err
+			return
+		}
+	}, timeout)
+
+	return conn, err
 }
 
 func (d *Dialer) Target() string {

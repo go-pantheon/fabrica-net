@@ -43,6 +43,14 @@ func NewConnWrapper(wid uint64, conn net.Conn, codec codec.Codec) ConnWrapper {
 	}
 }
 
+func (c ConnWrapper) Close() error {
+	if c.Codec == nil {
+		return nil
+	}
+
+	return c.Conn.Close()
+}
+
 type WIDGenerator struct {
 	counter *atomic.Uint64
 	netType int

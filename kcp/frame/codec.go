@@ -86,8 +86,13 @@ func (c *kcpCodec) Decode() (pack xnet.Pack, free func(), err error) {
 		pool.Free(buf)
 	}
 
-	if _, err := io.ReadFull(c.reader, buf); err != nil {
-		free()
+	defer func() {
+		if err != nil {
+			free()
+		}
+	}()
+
+	if _, err = io.ReadFull(c.reader, buf); err != nil {
 		return nil, nil, errors.Wrap(err, "read data failed")
 	}
 
