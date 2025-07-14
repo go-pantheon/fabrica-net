@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/client"
-	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/xnet"
 )
@@ -20,16 +19,20 @@ type Client struct {
 }
 
 // NewClient creates a new KCP client
-func NewClient(id int64, target string, handshakePack xnet.Pack, opts ...client.Option) *Client {
-	dialer := NewDialer(id, target, conf.Default().KCP)
-	baseClient := internal.NewBaseClient(id, handshakePack, dialer, opts...)
+func NewClient(id int64, target string, handshakePack xnet.Pack, opts ...client.Option) (*Client, error) {
+	options := client.NewOptions(opts...)
 
-	c := &Client{
-		BaseClient: baseClient,
-		target:     target,
+	dialer, err := NewDialer(id, target, options.Conf().KCP)
+	if err != nil {
+		return nil, err
 	}
 
-	return c
+	baseClient := internal.NewBaseClient(id, handshakePack, dialer, options)
+
+	return &Client{
+		BaseClient: baseClient,
+		target:     target,
+	}, nil
 }
 
 // Start starts the KCP client

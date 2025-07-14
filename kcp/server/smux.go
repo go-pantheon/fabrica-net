@@ -7,6 +7,7 @@ import (
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/kcp/frame"
+	"github.com/go-pantheon/fabrica-net/kcp/util"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
 	kcpgo "github.com/xtaci/kcp-go/v5"
@@ -23,7 +24,8 @@ type Smux struct {
 }
 
 func newSmux(id int64, conn *kcpgo.UDPSession, conf conf.KCP, widGen *internal.WIDGenerator) (*Smux, error) {
-	session, err := smux.Server(conn, newSmuxConfig(conf))
+	configurer := util.NewConnConfigurer(conf)
+	session, err := smux.Server(conn, configurer.CreateSmuxConfig())
 	if err != nil {
 		return nil, errors.Wrapf(err, "create smux session failed")
 	}
@@ -71,15 +73,4 @@ func (s *Smux) stop() error {
 
 		return nil
 	})
-}
-
-func newSmuxConfig(conf conf.KCP) *smux.Config {
-	smuxConfig := smux.DefaultConfig()
-	smuxConfig.Version = 2
-	smuxConfig.KeepAliveInterval = conf.KeepAliveInterval
-	smuxConfig.KeepAliveTimeout = conf.KeepAliveTimeout
-	smuxConfig.MaxFrameSize = conf.MaxFrameSize
-	smuxConfig.MaxReceiveBuffer = conf.MaxReceiveBuffer
-
-	return smuxConfig
 }

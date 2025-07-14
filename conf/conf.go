@@ -145,3 +145,99 @@ func MOBAConfig() Config {
 
 	return config
 }
+
+// ConfigPresets provides predefined configurations for different scenarios
+type ConfigPresets struct{}
+
+// Gaming returns configuration optimized for gaming with ultra-low latency
+func (ConfigPresets) Gaming() Config {
+	config := Default()
+
+	config.KCP = KCP{
+		WriteBufSize:      16384,
+		ReadBufSize:       16384,
+		DataShards:        8,
+		ParityShards:      2,
+		NoDelay:           [4]int{1, 5, 2, 1}, // Very aggressive for low latency
+		WindowSize:        [2]int{256, 256},
+		MTU:               1200, // Mobile-friendly
+		ACKNoDelay:        true,
+		WriteDelay:        false,
+		DSCP:              46, // EF (Expedited Forwarding)
+		Smux:              true,
+		SmuxStreamSize:    4,
+		KeepAliveInterval: 5 * time.Second,
+		KeepAliveTimeout:  15 * time.Second,
+		MaxFrameSize:      2048,
+		MaxReceiveBuffer:  8 * 1024 * 1024,
+	}
+
+	config.Worker.ReplyChanSize = 2048
+	config.Worker.HandshakeTimeout = 5 * time.Second
+	config.Worker.RequestIdleTimeout = 30 * time.Second
+	config.Worker.StopTimeout = 5 * time.Second
+	config.Worker.TunnelGroupSize = 64
+	config.Worker.TickInterval = 5 * time.Second
+
+	return config
+}
+
+// Streaming returns configuration optimized for streaming with high throughput
+func (ConfigPresets) Streaming() Config {
+	config := Default()
+
+	config.KCP = KCP{
+		WriteBufSize:      32768,
+		ReadBufSize:       32768,
+		DataShards:        10,
+		ParityShards:      3,
+		NoDelay:           [4]int{0, 10, 2, 1}, // Balanced
+		WindowSize:        [2]int{1024, 1024},  // Large windows for throughput
+		MTU:               1400,
+		ACKNoDelay:        false,
+		WriteDelay:        true, // Batch for efficiency
+		DSCP:              34,   // AF41 (Assured Forwarding)
+		Smux:              true,
+		SmuxStreamSize:    8,
+		KeepAliveInterval: 10 * time.Second,
+		KeepAliveTimeout:  30 * time.Second,
+		MaxFrameSize:      8192,
+		MaxReceiveBuffer:  16 * 1024 * 1024,
+	}
+
+	config.Worker.ReplyChanSize = 4096
+	config.Worker.TunnelGroupSize = 128
+
+	return config
+}
+
+// FileTransfer returns configuration optimized for reliable file transfer
+func (ConfigPresets) FileTransfer() Config {
+	config := Default()
+
+	config.KCP = KCP{
+		WriteBufSize:      65536,
+		ReadBufSize:       65536,
+		DataShards:        20,
+		ParityShards:      5,
+		NoDelay:           [4]int{0, 20, 2, 0}, // Conservative for reliability
+		WindowSize:        [2]int{2048, 2048},  // Very large windows
+		MTU:               1400,
+		ACKNoDelay:        false,
+		WriteDelay:        true,
+		DSCP:              10, // AF11 (Best effort)
+		Smux:              true,
+		SmuxStreamSize:    16,
+		KeepAliveInterval: 30 * time.Second,
+		KeepAliveTimeout:  90 * time.Second,
+		MaxFrameSize:      16384,
+		MaxReceiveBuffer:  32 * 1024 * 1024,
+	}
+
+	config.Worker.ReplyChanSize = 8192
+	config.Worker.HandshakeTimeout = 30 * time.Second
+	config.Worker.RequestIdleTimeout = 300 * time.Second
+	config.Worker.TunnelGroupSize = 256
+
+	return config
+}

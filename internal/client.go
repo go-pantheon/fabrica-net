@@ -30,9 +30,9 @@ type BaseClient struct {
 	receivedPackChan chan xnet.Pack
 }
 
-func NewBaseClient(id int64, handshakePack xnet.Pack, dialer Dialer, opts ...client.Option) *BaseClient {
+func NewBaseClient(id int64, handshakePack xnet.Pack, dialer Dialer, options *client.Options) *BaseClient {
 	c := &BaseClient{
-		Options:          client.NewOptions(opts...),
+		Options:          options,
 		Id:               id,
 		handshakePack:    handshakePack,
 		dialer:           dialer,

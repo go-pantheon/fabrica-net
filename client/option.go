@@ -52,3 +52,7 @@ func NewOptions(opts ...Option) *Options {
 func (o *Options) AuthFunc() AuthFunc {
 	return o.authFunc
 }
+
+func (o *Options) Conf() conf.Config {
+	return o.conf
+}

@@ -15,8 +15,7 @@ type Client struct {
 }
 
 func NewClient(id int64, bind string, handshakePack xnet.Pack, opts ...client.Option) *Client {
-	dialer := newDialer(id, bind)
-	baseClient := internal.NewBaseClient(id, handshakePack, dialer, opts...)
+	baseClient := internal.NewBaseClient(id, handshakePack, newDialer(id, bind), client.NewOptions(opts...))
 
 	return &Client{
 		BaseClient: baseClient,

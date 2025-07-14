@@ -10,6 +10,7 @@ import (
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/kcp/frame"
+	"github.com/go-pantheon/fabrica-net/kcp/util"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
 	kcpgo "github.com/xtaci/kcp-go/v5"
@@ -29,9 +30,18 @@ type Listener struct {
 
 	smuxIDGenerator *atomic.Int64
 	smuxSessions    *sync.Map
+
+	// Shared configuration utilities
+	configurer *util.ConnConfigurer
+	validator  *util.ConfigValidator
 }
 
-func newListener(bind string, conf conf.KCP) *Listener {
+func newListener(bind string, conf conf.KCP) (*Listener, error) {
+	validator := util.NewConfigValidator()
+	if err := validator.Validate(conf); err != nil {
+		return nil, err
+	}
+
 	return &Listener{
 		Stoppable:       xsync.NewStopper(10 * time.Second),
 		bind:            bind,
@@ -40,7 +50,9 @@ func newListener(bind string, conf conf.KCP) *Listener {
 		streamChan:      make(chan internal.ConnWrapper, 1024),
 		smuxIDGenerator: &atomic.Int64{},
 		smuxSessions:    &sync.Map{},
-	}
+		configurer:      util.NewConnConfigurer(conf),
+		validator:       validator,
+	}, nil
 }
 
 func (l *Listener) Start(ctx context.Context) error {
@@ -96,7 +108,7 @@ func (l *Listener) accept(ctx context.Context) (internal.ConnWrapper, error) {
 		return internal.ConnWrapper{}, errors.Wrapf(err, "accept kcp failed")
 	}
 
-	if err := l.configureConn(conn); err != nil {
+	if err := l.configurer.ConfigureConnection(conn); err != nil {
 		if closeErr := conn.Close(); closeErr != nil {
 			err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed"))
 		}
@@ -170,28 +182,6 @@ func (l *Listener) Stop(ctx context.Context) (err error) {
 
 		return err
 	})
-}
-
-func (l *Listener) configureConn(conn *kcpgo.UDPSession) error {
-	conn.SetNoDelay(l.conf.NoDelay[0], l.conf.NoDelay[1], l.conf.NoDelay[2], l.conf.NoDelay[3])
-	conn.SetWindowSize(l.conf.WindowSize[0], l.conf.WindowSize[1])
-	conn.SetMtu(l.conf.MTU)
-	conn.SetACKNoDelay(l.conf.ACKNoDelay)
-	conn.SetWriteDelay(l.conf.WriteDelay)
-
-	if err := conn.SetReadBuffer(l.conf.ReadBufSize); err != nil {
-		return errors.Wrapf(err, "set read buffer failed")
-	}
-
-	if err := conn.SetWriteBuffer(l.conf.WriteBufSize); err != nil {
-		return errors.Wrapf(err, "set write buffer failed")
-	}
-
-	if err := conn.SetDSCP(l.conf.DSCP); err != nil {
-		return errors.Wrapf(err, "set dscp failed")
-	}
-
-	return nil
 }
 
 func (l *Listener) Endpoint() (string, error) {

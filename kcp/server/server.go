@@ -27,7 +27,10 @@ func NewServer(bind string, svc xnet.Service, opts ...server.Option) (*Server, e
 	}
 
 	options := server.NewOptions(opts...)
-	listener := newListener(bind, options.Conf().KCP)
+	listener, err := newListener(bind, options.Conf().KCP)
+	if err != nil {
+		return nil, err
+	}
 
 	baseServer, err := internal.NewBaseServer(listener, svc, options)
 	if err != nil {
