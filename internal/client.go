@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/client"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
+	"github.com/go-pantheon/fabrica-util/xsync"
 )
 
 var _ xnet.Client = (*BaseClient)(nil)
@@ -68,23 +70,30 @@ func (c *BaseClient) Start(ctx context.Context) (err error) {
 }
 
 func (c *BaseClient) Stop(ctx context.Context) (err error) {
-	var wg sync.WaitGroup
+	var (
+		wg      sync.WaitGroup
+		safeErr = &errors.SafeJoinError{}
+	)
 
 	c.dialogMap.Range(func(key, value any) bool {
 		wg.Add(1)
 
-		go func() {
+		if err := xsync.Timeout(ctx, fmt.Sprintf("client.stop.dialog-%d-%d", c.Id, key), func() error {
 			defer wg.Done()
 
-			if stopErr := value.(*Dialog).stop(); stopErr != nil {
-				err = errors.JoinUnsimilar(err, errors.Wrap(stopErr, "stop dialog failed"))
-			}
-		}()
+			return value.(*Dialog).stop()
+		}, 10*time.Second); err != nil {
+			safeErr.Join(err)
+		}
 
 		return true
 	})
 
 	wg.Wait()
+
+	if safeErr.Error() != "" {
+		err = errors.Join(err, safeErr)
+	}
 
 	close(c.receivedPackChan)
 

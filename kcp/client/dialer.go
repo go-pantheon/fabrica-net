@@ -95,12 +95,12 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 }
 
 func (d *Dialer) dial(ctx context.Context, target string, timeout time.Duration) (conn *kcpgo.UDPSession, err error) {
-	err = xsync.GoTimeout(ctx, fmt.Sprintf("kcp.dial-%s", target), func(errChan chan<- error) {
-		conn, err = kcpgo.DialWithOptions(target, nil, d.conf.DataShards, d.conf.ParityShards)
-		if err != nil {
-			errChan <- err
-			return
+	err = xsync.Timeout(ctx, fmt.Sprintf("kcp.dial-%s", target), func() error {
+		if conn, err = kcpgo.DialWithOptions(target, nil, d.conf.DataShards, d.conf.ParityShards); err != nil {
+			return err
 		}
+
+		return nil
 	}, timeout)
 
 	return conn, err

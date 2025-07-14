@@ -145,12 +145,10 @@ func (l *Listener) Stop(ctx context.Context) (err error) {
 		l.smuxSessions.Range(func(key, value any) bool {
 			wg.Add(1)
 
-			if err := xsync.GoTimeout(ctx, fmt.Sprintf("kcp.Listener.stop.smux-%d", key), func(errChan chan<- error) {
+			if err := xsync.Timeout(ctx, fmt.Sprintf("kcp.Listener.stop.smux-%d", key), func() error {
 				defer wg.Done()
 
-				if closeErr := value.(*Smux).stop(); closeErr != nil {
-					safeErr.Join(errors.Wrapf(closeErr, "close smux failed"))
-				}
+				return value.(*Smux).stop()
 			}, 10*time.Second); err != nil {
 				safeErr.Join(err)
 			}
