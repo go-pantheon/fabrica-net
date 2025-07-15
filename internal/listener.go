@@ -30,14 +30,14 @@ type Listener interface {
 }
 
 type ConnWrapper struct {
-	ID    uint64
+	WID   uint64
 	Conn  net.Conn
 	Codec codec.Codec
 }
 
 func NewConnWrapper(wid uint64, conn net.Conn, codec codec.Codec) ConnWrapper {
 	return ConnWrapper{
-		ID:    wid,
+		WID:   wid,
 		Conn:  conn,
 		Codec: codec,
 	}

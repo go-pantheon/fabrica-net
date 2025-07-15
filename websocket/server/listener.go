@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/conf"
@@ -19,6 +20,8 @@ import (
 var _ internal.Listener = (*listener)(nil)
 
 type listener struct {
+	xsync.Stoppable
+
 	bind string
 	path string
 	conf conf.Config
@@ -33,11 +36,12 @@ type listener struct {
 
 func newListener(bind string, path string, conf conf.Config) *listener {
 	return &listener{
-		bind:     bind,
-		path:     path,
-		conf:     conf,
-		widGener: internal.NewConnIDGenerator(internal.NetTypeWebSocket),
-		connChan: make(chan internal.ConnWrapper, 1024),
+		Stoppable: xsync.NewStopper(10 * time.Second),
+		bind:      bind,
+		path:      path,
+		conf:      conf,
+		widGener:  internal.NewConnIDGenerator(internal.NetTypeWebSocket),
+		connChan:  make(chan internal.ConnWrapper, 1024),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  conf.WebSocket.ReadBufSize,
 			WriteBufferSize: conf.WebSocket.WriteBufSize,
@@ -67,8 +71,10 @@ func (l *listener) Start(ctx context.Context) error {
 
 	l.listener = listener
 
-	xsync.Go("websocket.Listener", func() error {
+	l.GoAndStop("websocket.Listener.start", func() error {
 		return l.server.Serve(listener)
+	}, func() error {
+		return l.Stop(ctx)
 	})
 
 	return nil

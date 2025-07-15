@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/kcp/frame"
@@ -42,7 +43,7 @@ func newListener(bind string, conf conf.KCP) (*Listener, error) {
 		return nil, err
 	}
 
-	return &Listener{
+	l := &Listener{
 		Stoppable:       xsync.NewStopper(10 * time.Second),
 		bind:            bind,
 		conf:            conf,
@@ -52,28 +53,36 @@ func newListener(bind string, conf conf.KCP) (*Listener, error) {
 		smuxSessions:    &sync.Map{},
 		configurer:      util.NewConnConfigurer(conf),
 		validator:       validator,
-	}, nil
-}
+	}
 
-func (l *Listener) Start(ctx context.Context) error {
 	listener, err := kcpgo.ListenWithOptions(l.bind, nil, l.conf.DataShards, l.conf.ParityShards)
 	if err != nil {
-		return errors.Wrapf(err, "kcp listen failed. bind=%s", l.bind)
+		return nil, errors.Wrapf(err, "kcp listen failed. bind=%s", l.bind)
 	}
 
 	if err := listener.SetReadBuffer(l.conf.ReadBufSize); err != nil {
-		return errors.Wrapf(err, "set read buffer failed")
+		return nil, errors.Wrapf(err, "set read buffer failed")
 	}
 
 	if err := listener.SetWriteBuffer(l.conf.WriteBufSize); err != nil {
-		return errors.Wrapf(err, "set write buffer failed")
+		return nil, errors.Wrapf(err, "set write buffer failed")
 	}
 
 	if err := listener.SetDSCP(l.conf.DSCP); err != nil {
-		return errors.Wrapf(err, "set dscp failed")
+		return nil, errors.Wrapf(err, "set dscp failed")
 	}
 
 	l.listener = listener
+
+	return l, nil
+}
+
+func (l *Listener) Start(ctx context.Context) error {
+	l.GoAndStop("kcp.Listener.start", func() error {
+		return l.start(ctx)
+	}, func() error {
+		return l.Stop(ctx)
+	})
 
 	return nil
 }
@@ -87,39 +96,43 @@ func (l *Listener) Accept(ctx context.Context) (internal.ConnWrapper, error) {
 			return internal.ConnWrapper{}, ctx.Err()
 		case conn := <-l.streamChan:
 			return conn, nil
-		default:
-			wrapper, err := l.accept()
-			if err != nil {
-				return internal.ConnWrapper{}, err
-			}
-
-			if !l.conf.Smux {
-				return wrapper, nil
-			}
-
-			if err := l.startSmux(ctx, wrapper); err != nil {
-				return internal.ConnWrapper{}, err
-			}
-
-			continue
 		}
 	}
 }
 
-func (l *Listener) accept() (internal.ConnWrapper, error) {
+func (l *Listener) start(ctx context.Context) error {
+	for {
+		select {
+		case <-l.StopTriggered():
+			return xsync.ErrStopByTrigger
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if err := l.accept(ctx); err != nil {
+				log.Errorf("kcp.Listener.accept failed: %+v", err)
+			}
+		}
+	}
+}
+
+func (l *Listener) accept(ctx context.Context) error {
 	conn, err := l.listener.AcceptKCP()
 	if err != nil {
-		return internal.ConnWrapper{}, errors.Wrapf(err, "accept kcp failed")
+		return errors.Wrapf(err, "accept kcp failed")
 	}
 
 	l.configurer.ConfigureConnection(conn)
 
-	return internal.NewConnWrapper(l.connIdGener.Next(), conn, frame.New(conn)), nil
+	if l.conf.Smux {
+		return l.startSmux(ctx, conn)
+	}
+
+	l.streamChan <- internal.NewConnWrapper(l.connIdGener.Next(), conn, frame.New(conn))
+	return nil
 }
 
-func (l *Listener) startSmux(ctx context.Context, wrapper internal.ConnWrapper) error {
+func (l *Listener) startSmux(ctx context.Context, conn *kcpgo.UDPSession) error {
 	id := l.smuxIDGenerator.Add(1)
-	conn := wrapper.Conn.(*kcpgo.UDPSession)
 
 	smux, err := newSmux(id, conn, l.conf, l.connIdGener)
 	if err != nil {

@@ -50,13 +50,13 @@ func (c *BaseClient) Start(ctx context.Context) (err error) {
 	}
 
 	for _, wrapper := range wrappers {
-		d := newDialog(c.Id, int64(wrapper.ID), c.handshakePack, wrapper, c.AuthFunc(), c.receivedPackChan)
-		c.dialogMap.Store(wrapper.ID, d)
+		d := newDialog(c.Id, int64(wrapper.WID), c.handshakePack, wrapper, c.AuthFunc(), c.receivedPackChan)
+		c.dialogMap.Store(wrapper.WID, d)
 
 		d.GoAndStop(fmt.Sprintf("client.receive.id-%d-%d", d.id, d.connID), func() error {
 			return d.start(ctx)
 		}, func() error {
-			c.dialogMap.Delete(wrapper.ID)
+			c.dialogMap.Delete(wrapper.WID)
 			return d.stop()
 		})
 	}

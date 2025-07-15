@@ -103,7 +103,7 @@ func main() {
 }
 
 func handshakePack(connID int64) (xnet.Pack, error) {
-	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, fmt.Appendf(nil, "Hi from KCP client! %d", connID), 0)
+	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, fmt.Appendf(nil, "Hi from KCP client-%d", connID), 0)
 	authMsg.ConnID = int32(connID)
 
 	authPack, err := json.Marshal(authMsg)
@@ -139,7 +139,7 @@ func sendEcho(cli *kcp.Client) error {
 	for streamID := 1; streamID <= size; streamID++ {
 		for index := range 20 {
 			msg := message.NewPacket(message.ModEcho, 0, 1, int32(index),
-				[]byte("Hello from KCP! This is a gaming-optimized message for low latency communication."), 0)
+				[]byte("Hello KCP"), 0)
 
 			if config.KCP.Smux {
 				msg.ConnID = int32(streamID)
