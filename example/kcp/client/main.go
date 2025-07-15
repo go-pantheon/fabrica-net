@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -31,11 +32,6 @@ func main() {
 
 	if err := frame.InitMOBARingPool(); err != nil {
 		log.Errorf("failed to initialize MOBA ring pool: %+v", err)
-	}
-
-	handshakePack, err := handshakePack()
-	if err != nil {
-		panic(err)
 	}
 
 	cli, err := kcp.NewClient(1, "127.0.0.1:17201", handshakePack,
@@ -106,13 +102,17 @@ func main() {
 	}
 }
 
-func handshakePack() (xnet.Pack, error) {
-	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, []byte("Hi from KCP client!"), 0)
+func handshakePack(connID int64) (xnet.Pack, error) {
+	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, fmt.Appendf(nil, "Hi from KCP client! %d", connID), 0)
+	authMsg.ConnID = int32(connID)
 
 	authPack, err := json.Marshal(authMsg)
 	if err != nil {
 		return nil, errors.Wrap(err, "marshal auth pack failed")
 	}
+
+	// Wait for server to start accepting smux connections
+	time.Sleep(time.Second * 2)
 
 	return authPack, nil
 }
@@ -123,7 +123,7 @@ func authFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
 		return nil, errors.Wrap(err, "unmarshal auth pack failed")
 	}
 
-	log.Infof("[RECV] auth %s", authMsg)
+	log.Infof("[RECV] %d auth %s", authMsg.ConnID, authMsg)
 
 	return xnet.DefaultSession(), nil
 }
@@ -142,7 +142,7 @@ func sendEcho(cli *kcp.Client) error {
 				[]byte("Hello from KCP! This is a gaming-optimized message for low latency communication."), 0)
 
 			if config.KCP.Smux {
-				msg.StreamID = int32(streamID)
+				msg.ConnID = int32(streamID)
 			}
 
 			pack, err := json.Marshal(msg)
@@ -154,7 +154,7 @@ func sendEcho(cli *kcp.Client) error {
 				return err
 			}
 
-			log.Infof("[SEND] %d echo %s", msg.StreamID, msg)
+			log.Infof("[SEND] %d echo %s", msg.ConnID, msg)
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
@@ -168,7 +168,7 @@ func recvEcho(cli *kcp.Client) error {
 			return errors.Wrap(err, "unmarshal echo recv pack failed")
 		}
 
-		log.Infof("[RECV] %d echo %s", msg.StreamID, msg)
+		log.Infof("[RECV] %d echo %s", msg.ConnID, msg)
 	}
 
 	return nil

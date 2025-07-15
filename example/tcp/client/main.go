@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,11 +22,6 @@ import (
 var ErrSendFinished = errors.New("send finished")
 
 func main() {
-	handshakePack, err := handshakePack()
-	if err != nil {
-		panic(err)
-	}
-
 	cli := tcp.NewClient(1, "127.0.0.1:17101", handshakePack, client.WithAuthFunc(authFunc))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -82,8 +78,8 @@ func main() {
 	}
 }
 
-func handshakePack() (xnet.Pack, error) {
-	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, []byte("Hi!"), 0)
+func handshakePack(connID int64) (xnet.Pack, error) {
+	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, fmt.Appendf(nil, "Hi! %d", connID), 0)
 
 	authPack, err := json.Marshal(authMsg)
 	if err != nil {

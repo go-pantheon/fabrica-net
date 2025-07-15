@@ -32,7 +32,7 @@ func (s *Service) Auth(ctx context.Context, in xnet.Pack) (out xnet.Pack, ss xne
 
 	log.Infof("[RECV] auth %s", p)
 
-	ss = xnet.NewSession(p.Obj, "", 0)
+	ss = xnet.NewSession(p.Obj, "", 0, xnet.WithConnID(p.ConnID))
 
 	p.Data = []byte("auth success")
 

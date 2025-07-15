@@ -14,7 +14,7 @@ type Client struct {
 	bind string
 }
 
-func NewClient(id int64, bind string, handshakePack xnet.Pack, opts ...client.Option) *Client {
+func NewClient(id int64, bind string, handshakePack internal.HandshakePackFunc, opts ...client.Option) *Client {
 	baseClient := internal.NewBaseClient(id, handshakePack, newDialer(id, bind), client.NewOptions(opts...))
 
 	return &Client{

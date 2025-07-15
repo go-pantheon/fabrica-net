@@ -126,14 +126,14 @@ func (l *Listener) startSmux(ctx context.Context, wrapper internal.ConnWrapper) 
 		return errors.Wrapf(err, "new smux failed")
 	}
 
-	l.smuxSessions.Store(id, smux)
-
-	smux.GoAndStop(fmt.Sprintf("kcp.Listener.newSmux.id-%d", id), func() error {
+	smux.GoAndStop(fmt.Sprintf("kcp.Listener.startSmux.id-%d", id), func() error {
 		return smux.start(ctx, l.streamChan)
 	}, func() error {
 		l.smuxSessions.Delete(id)
-		return smux.stop()
+		return smux.Stop(ctx)
 	})
+
+	l.smuxSessions.Store(id, smux)
 
 	return nil
 }

@@ -15,12 +15,14 @@ import (
 
 var _ xnet.Client = (*BaseClient)(nil)
 
+type HandshakePackFunc func(connID int64) (xnet.Pack, error)
+
 type BaseClient struct {
 	*client.Options
 
 	Id int64
 
-	handshakePack xnet.Pack
+	handshakePack HandshakePackFunc
 
 	dialer    Dialer
 	dialogMap *sync.Map
@@ -28,7 +30,7 @@ type BaseClient struct {
 	receivedPackChan chan xnet.Pack
 }
 
-func NewBaseClient(id int64, handshakePack xnet.Pack, dialer Dialer, options *client.Options) *BaseClient {
+func NewBaseClient(id int64, handshakePack HandshakePackFunc, dialer Dialer, options *client.Options) *BaseClient {
 	c := &BaseClient{
 		Options:          options,
 		Id:               id,
@@ -51,7 +53,7 @@ func (c *BaseClient) Start(ctx context.Context) (err error) {
 		d := newDialog(c.Id, int64(wrapper.ID), c.handshakePack, wrapper, c.AuthFunc(), c.receivedPackChan)
 		c.dialogMap.Store(wrapper.ID, d)
 
-		d.GoAndStop(fmt.Sprintf("client.receive.id-%d-%d", d.uid, d.id), func() error {
+		d.GoAndStop(fmt.Sprintf("client.receive.id-%d-%d", d.id, d.connID), func() error {
 			return d.start(ctx)
 		}, func() error {
 			c.dialogMap.Delete(wrapper.ID)

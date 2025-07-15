@@ -25,7 +25,7 @@ type Packet struct {
 	Index       int32  `json:"index"`
 	Data        []byte `json:"data"`
 	DataVersion uint64 `json:"data_version"`
-	StreamID    int32  `json:"stream_id"`
+	ConnID      int32  `json:"conn_id"`
 	FragID      int32  `json:"frag_id"`
 	FragCount   int32  `json:"frag_count"`
 	FragIndex   int32  `json:"frag_index"`
@@ -66,8 +66,8 @@ func (m *Packet) GetDataVersion() uint64 {
 	return m.DataVersion
 }
 
-func (m *Packet) GetStreamId() int32 {
-	return m.StreamID
+func (m *Packet) GetConnId() int32 {
+	return m.ConnID
 }
 
 func (m *Packet) GetFragId() int32 {

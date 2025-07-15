@@ -104,7 +104,7 @@ func Default() Config {
 		WriteDelay:        false,
 		DSCP:              46,
 		Smux:              true,
-		SmuxStreamSize:    3,
+		SmuxStreamSize:    4,
 		KeepAliveInterval: 10 * time.Second,
 		KeepAliveTimeout:  30 * time.Second,
 		MaxFrameSize:      4096,
@@ -130,7 +130,6 @@ func MOBAConfig() Config {
 	config.KCP.NoDelay = [4]int{1, 5, 2, 1}
 	config.KCP.WindowSize = [2]int{256, 256}
 	config.KCP.MTU = 1200
-	config.KCP.SmuxStreamSize = 4
 	config.KCP.KeepAliveInterval = 5 * time.Second
 	config.KCP.KeepAliveTimeout = 15 * time.Second
 	config.KCP.MaxFrameSize = 2048

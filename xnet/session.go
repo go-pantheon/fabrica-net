@@ -33,6 +33,7 @@ type RouteTableRenewal interface {
 type Metadata interface {
 	UID() int64
 	SID() int64
+	ConnID() int32
 	Color() string
 	Status() int64
 	ClientIP() string
@@ -48,6 +49,7 @@ type session struct {
 
 	uid         int64
 	sid         int64
+	connID      int32
 	color       string
 	status      int64
 	clientIP    string
@@ -71,6 +73,12 @@ type Option func(s *session)
 func WithSID(sid int64) Option {
 	return func(s *session) {
 		s.sid = sid
+	}
+}
+
+func WithConnID(connID int32) Option {
+	return func(s *session) {
+		s.connID = connID
 	}
 }
 
@@ -138,6 +146,10 @@ func (s *session) SID() int64 {
 	return s.sid
 }
 
+func (s *session) ConnID() int32 {
+	return s.connID
+}
+
 func (s *session) Color() string {
 	if len(s.color) == 0 {
 		return ""
@@ -167,7 +179,7 @@ func (s *session) UpdateNextRenewTime(t time.Time) {
 }
 
 func (s *session) LogInfo() string {
-	return fmt.Sprintf("uid=%d sid=%d color=%s status=%d ip=%s", s.UID(), s.SID(), s.Color(), s.Status(), s.ClientIP())
+	return fmt.Sprintf("cid=%d uid=%d sid=%d color=%s status=%d ip=%s", s.ConnID(), s.UID(), s.SID(), s.Color(), s.Status(), s.ClientIP())
 }
 
 type indexInfo struct {

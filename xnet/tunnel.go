@@ -67,10 +67,10 @@ type BaseMessage interface {
 	GetData() []byte
 	GetDataVersion() uint64
 	GetIndex() int32
+	GetConnId() int32
 }
 
 type SmuxParam interface {
-	GetStreamId() int32
 	GetFragId() int32
 	GetFragCount() int32
 	GetFragIndex() int32
