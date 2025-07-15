@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -36,10 +35,10 @@ func newDialer(id int64, url string, origin string) *Dialer {
 	}
 }
 
-func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.ConnWrapper, error) {
+func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrapper, error) {
 	u, err := url.Parse(target)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "parse url failed. url=%s", target)
+		return nil, errors.Wrapf(err, "parse url failed. url=%s", target)
 	}
 
 	header := http.Header{}
@@ -47,7 +46,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 
 	c, resp, err := d.dialer.DialContext(ctx, u.String(), header)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "connect failed. url=%s", target)
+		return nil, errors.Wrapf(err, "connect failed. url=%s", target)
 	}
 
 	defer func() {
@@ -61,7 +60,11 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 	conn := wsconn.NewWebSocketConn(c)
 	codec := frame.New(conn)
 
-	return nil, []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, codec)}, nil
+	return []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, codec)}, nil
+}
+
+func (d *Dialer) Stop(ctx context.Context) error {
+	return nil
 }
 
 func (d *Dialer) Target() string {

@@ -51,18 +51,18 @@ func (c ConnWrapper) Close() error {
 	return c.Conn.Close()
 }
 
-type WIDGenerator struct {
+type ConnIDGenerator struct {
 	counter *atomic.Uint64
 	netType int
 }
 
-func NewWIDGenerator(netType int) *WIDGenerator {
-	return &WIDGenerator{
+func NewConnIDGenerator(netType int) *ConnIDGenerator {
+	return &ConnIDGenerator{
 		counter: &atomic.Uint64{},
 		netType: netType,
 	}
 }
 
-func (w *WIDGenerator) Next() uint64 {
+func (w *ConnIDGenerator) Next() uint64 {
 	return w.counter.Add(1)<<4 | uint64(w.netType)
 }

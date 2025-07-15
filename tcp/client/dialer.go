@@ -25,20 +25,24 @@ func newDialer(id int64, bind string) *dialer {
 	}
 }
 
-func (d *dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.ConnWrapper, error) {
+func (d *dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrapper, error) {
 	addr, err := net.ResolveTCPAddr("tcp", target)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "resolve addr failed. addr=%s", target)
+		return nil, errors.Wrapf(err, "resolve addr failed. addr=%s", target)
 	}
 
 	conn, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "connect failed. addr=%s", target)
+		return nil, errors.Wrapf(err, "connect failed. addr=%s", target)
 	}
 
 	util.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", d.id))
 
-	return nil, []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, frame.New(conn))}, nil
+	return []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, frame.New(conn))}, nil
+}
+
+func (d *dialer) Stop(ctx context.Context) error {
+	return nil
 }
 
 func (d *dialer) Target() string {

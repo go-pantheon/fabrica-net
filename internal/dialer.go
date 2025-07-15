@@ -17,7 +17,10 @@ import (
 // Dialer defines the interface for protocol-specific connection dialing
 type Dialer interface {
 	// Dial establishes a connection to the target
-	Dial(ctx context.Context, target string) (baseConn net.Conn, conns []ConnWrapper, err error)
+	Dial(ctx context.Context, target string) (conns []ConnWrapper, err error)
+
+	// Stop stops the dialer
+	Stop(ctx context.Context) error
 
 	// Target returns the target address/URL for this dialer
 	Target() string

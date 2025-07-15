@@ -27,6 +27,8 @@ var (
 )
 
 func main() {
+	config.KCP.Smux = false
+
 	if err := frame.InitMOBARingPool(); err != nil {
 		log.Errorf("failed to initialize MOBA ring pool: %+v", err)
 	}
@@ -133,7 +135,9 @@ func sendEcho(cli *kcp.Client) error {
 		msg := message.NewPacket(message.ModEcho, 0, 1, int32(i),
 			[]byte("Hello from KCP! This is a gaming-optimized message for low latency communication."), 0)
 
-		msg.StreamID = int32(i % streamSize)
+		if config.KCP.Smux {
+			msg.StreamID = int32(i % streamSize)
+		}
 
 		pack, err := json.Marshal(msg)
 		if err != nil {

@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/go-pantheon/fabrica-net/conf"
@@ -22,6 +21,7 @@ type Dialer struct {
 	id         int64
 	target     string
 	conf       conf.KCP
+	smux       *smux.Session
 	configurer *util.ConnConfigurer
 	validator  *util.ConfigValidator
 }
@@ -41,16 +41,20 @@ func NewDialer(id int64, target string, conf conf.KCP) (*Dialer, error) {
 	}, nil
 }
 
-func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.ConnWrapper, error) {
+func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrapper, error) {
+	wrappers := make([]internal.ConnWrapper, 0, d.conf.SmuxStreamSize+1)
+
 	conn, err := d.dial(ctx, target, time.Second*10)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	d.configurer.ConfigureConnection(conn)
 
+	wrappers = append(wrappers, internal.NewConnWrapper(uint64(d.id), conn, frame.New(conn)))
+
 	if !d.conf.Smux {
-		return conn, []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, frame.New(conn))}, nil
+		return wrappers, nil
 	}
 
 	session, err := smux.Client(conn, d.configurer.CreateSmuxConfig())
@@ -59,17 +63,17 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 			err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed"))
 		}
 
-		return nil, nil, errors.Wrapf(err, "create smux session failed")
+		return nil, errors.Wrapf(err, "create smux session failed")
 	}
 
-	wrappers := make([]internal.ConnWrapper, 0, d.conf.SmuxStreamSize)
+	d.smux = session
 
 	defer func() {
 		if err == nil {
 			return
 		}
 
-		for _, wrapper := range wrappers {
+		for _, wrapper := range wrappers[1:] {
 			if closeErr := wrapper.Close(); closeErr != nil {
 				err = errors.JoinUnsimilar(err, errors.Wrapf(closeErr, "close stream during cleanup failed"))
 			}
@@ -89,13 +93,23 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 	for i := 0; i < d.conf.SmuxStreamSize; i++ {
 		stream, streamErr := session.OpenStream()
 		if streamErr != nil {
-			return nil, nil, errors.Wrapf(streamErr, "create smux stream %d failed", i)
+			return nil, errors.Wrapf(streamErr, "create smux stream %d failed", i)
 		}
 
 		wrappers = append(wrappers, internal.NewConnWrapper(uint64(d.id), stream, frame.New(stream)))
 	}
 
-	return conn, wrappers, nil
+	return wrappers, nil
+}
+
+func (d *Dialer) Stop(ctx context.Context) error {
+	if d.smux != nil {
+		if err := d.smux.Close(); err != nil {
+			return errors.Wrapf(err, "close smux session failed")
+		}
+	}
+
+	return nil
 }
 
 func (d *Dialer) dial(ctx context.Context, target string, timeout time.Duration) (conn *kcpgo.UDPSession, err error) {

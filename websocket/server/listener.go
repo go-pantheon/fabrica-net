@@ -27,7 +27,7 @@ type listener struct {
 	server   *http.Server
 	upgrader websocket.Upgrader
 
-	widGener *internal.WIDGenerator
+	widGener *internal.ConnIDGenerator
 	connChan chan internal.ConnWrapper
 }
 
@@ -36,7 +36,7 @@ func newListener(bind string, path string, conf conf.Config) *listener {
 		bind:     bind,
 		path:     path,
 		conf:     conf,
-		widGener: internal.NewWIDGenerator(internal.NetTypeWebSocket),
+		widGener: internal.NewConnIDGenerator(internal.NetTypeWebSocket),
 		connChan: make(chan internal.ConnWrapper, 1024),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  conf.WebSocket.ReadBufSize,

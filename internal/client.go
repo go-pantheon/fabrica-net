@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"fmt"
-	"net"
 	"sync"
 	"time"
 
@@ -24,7 +23,6 @@ type BaseClient struct {
 	handshakePack xnet.Pack
 
 	dialer    Dialer
-	conn      net.Conn
 	dialogMap *sync.Map
 
 	receivedPackChan chan xnet.Pack
@@ -44,12 +42,10 @@ func NewBaseClient(id int64, handshakePack xnet.Pack, dialer Dialer, options *cl
 }
 
 func (c *BaseClient) Start(ctx context.Context) (err error) {
-	conn, wrappers, err := c.dialer.Dial(ctx, c.dialer.Target())
+	wrappers, err := c.dialer.Dial(ctx, c.dialer.Target())
 	if err != nil {
 		return errors.Wrapf(err, "connect failed. target=%s", c.dialer.Target())
 	}
-
-	c.conn = conn
 
 	for i, wrapper := range wrappers {
 		id := int64(i)
@@ -95,13 +91,11 @@ func (c *BaseClient) Stop(ctx context.Context) (err error) {
 		err = errors.Join(err, safeErr)
 	}
 
-	close(c.receivedPackChan)
-
-	if c.conn != nil {
-		if closeErr := c.conn.Close(); closeErr != nil {
-			err = errors.Join(err, errors.Wrapf(closeErr, "close connection failed"))
-		}
+	if dialerErr := c.dialer.Stop(ctx); dialerErr != nil {
+		err = errors.Join(err, errors.Wrapf(dialerErr, "stop dialer failed"))
 	}
+
+	close(c.receivedPackChan)
 
 	return err
 }

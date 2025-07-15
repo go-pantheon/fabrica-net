@@ -22,11 +22,11 @@ var _ internal.Listener = (*Listener)(nil)
 type Listener struct {
 	xsync.Stoppable
 
-	bind       string
-	conf       conf.KCP
-	listener   *kcpgo.Listener
-	widGener   *internal.WIDGenerator
-	streamChan chan internal.ConnWrapper
+	bind        string
+	conf        conf.KCP
+	listener    *kcpgo.Listener
+	connIdGener *internal.ConnIDGenerator
+	streamChan  chan internal.ConnWrapper
 
 	smuxIDGenerator *atomic.Int64
 	smuxSessions    *sync.Map
@@ -46,7 +46,7 @@ func newListener(bind string, conf conf.KCP) (*Listener, error) {
 		Stoppable:       xsync.NewStopper(10 * time.Second),
 		bind:            bind,
 		conf:            conf,
-		widGener:        internal.NewWIDGenerator(internal.NetTypeKCP),
+		connIdGener:     internal.NewConnIDGenerator(internal.NetTypeKCP),
 		streamChan:      make(chan internal.ConnWrapper, 1024),
 		smuxIDGenerator: &atomic.Int64{},
 		smuxSessions:    &sync.Map{},
@@ -88,21 +88,23 @@ func (l *Listener) Accept(ctx context.Context) (internal.ConnWrapper, error) {
 		case conn := <-l.streamChan:
 			return conn, nil
 		default:
-			conn, err := l.accept(ctx)
+			wrapper, err := l.accept()
 			if err != nil {
 				return internal.ConnWrapper{}, err
 			}
 
-			if !l.conf.Smux {
-				return conn, nil
+			if l.conf.Smux {
+				if err := l.startSmux(ctx, wrapper); err != nil {
+					return internal.ConnWrapper{}, err
+				}
 			}
 
-			continue
+			return wrapper, nil
 		}
 	}
 }
 
-func (l *Listener) accept(ctx context.Context) (internal.ConnWrapper, error) {
+func (l *Listener) accept() (internal.ConnWrapper, error) {
 	conn, err := l.listener.AcceptKCP()
 	if err != nil {
 		return internal.ConnWrapper{}, errors.Wrapf(err, "accept kcp failed")
@@ -110,21 +112,14 @@ func (l *Listener) accept(ctx context.Context) (internal.ConnWrapper, error) {
 
 	l.configurer.ConfigureConnection(conn)
 
-	if l.conf.Smux {
-		if err := l.initSmux(ctx, conn); err != nil {
-			return internal.ConnWrapper{}, err
-		}
-
-		return internal.ConnWrapper{}, nil
-	}
-
-	return internal.NewConnWrapper(l.widGener.Next(), conn, frame.New(conn)), nil
+	return internal.NewConnWrapper(l.connIdGener.Next(), conn, frame.New(conn)), nil
 }
 
-func (l *Listener) initSmux(ctx context.Context, conn *kcpgo.UDPSession) error {
+func (l *Listener) startSmux(ctx context.Context, wrapper internal.ConnWrapper) error {
 	id := l.smuxIDGenerator.Add(1)
+	conn := wrapper.Conn.(*kcpgo.UDPSession)
 
-	smux, err := newSmux(id, conn, l.conf, l.widGener)
+	smux, err := newSmux(id, conn, l.conf, l.connIdGener)
 	if err != nil {
 		return errors.Wrapf(err, "new smux failed")
 	}

@@ -20,10 +20,10 @@ type Smux struct {
 	id           int64
 	conn         *kcpgo.UDPSession
 	session      *smux.Session
-	widGenerator *internal.WIDGenerator
+	widGenerator *internal.ConnIDGenerator
 }
 
-func newSmux(id int64, conn *kcpgo.UDPSession, conf conf.KCP, widGen *internal.WIDGenerator) (*Smux, error) {
+func newSmux(id int64, conn *kcpgo.UDPSession, conf conf.KCP, widGen *internal.ConnIDGenerator) (*Smux, error) {
 	configurer := util.NewConnConfigurer(conf)
 	session, err := smux.Server(conn, configurer.CreateSmuxConfig())
 	if err != nil {
@@ -59,12 +59,6 @@ func (s *Smux) start(ctx context.Context, streamChan chan internal.ConnWrapper) 
 
 func (s *Smux) stop() error {
 	return s.TurnOff(func() error {
-		if s.conn != nil {
-			if closeErr := s.conn.Close(); closeErr != nil {
-				return errors.Wrapf(closeErr, "smux close kcp connection failed")
-			}
-		}
-
 		if s.session != nil {
 			if closeErr := s.session.Close(); closeErr != nil {
 				return errors.Wrapf(closeErr, "close smux session failed")

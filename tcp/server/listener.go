@@ -17,14 +17,14 @@ type Listener struct {
 	bind     string
 	conf     conf.TCP
 	listener *net.TCPListener
-	widGener *internal.WIDGenerator
+	widGener *internal.ConnIDGenerator
 }
 
 func newListener(bind string, conf conf.TCP) *Listener {
 	return &Listener{
 		bind:     bind,
 		conf:     conf,
-		widGener: internal.NewWIDGenerator(internal.NetTypeTCP),
+		widGener: internal.NewConnIDGenerator(internal.NetTypeTCP),
 	}
 }
 
