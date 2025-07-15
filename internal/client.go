@@ -15,7 +15,7 @@ import (
 
 var _ xnet.Client = (*BaseClient)(nil)
 
-type HandshakePackFunc func(connID int64) (xnet.Pack, error)
+type HandshakePackFunc func(wid uint64) (xnet.Pack, error)
 
 type BaseClient struct {
 	*client.Options
@@ -50,10 +50,10 @@ func (c *BaseClient) Start(ctx context.Context) (err error) {
 	}
 
 	for _, wrapper := range wrappers {
-		d := newDialog(c.Id, int64(wrapper.WID), c.handshakePack, wrapper, c.AuthFunc(), c.receivedPackChan)
+		d := newDialog(c.Id, wrapper.WID, c.handshakePack, wrapper, c.AuthFunc())
 		c.dialogMap.Store(wrapper.WID, d)
 
-		d.GoAndStop(fmt.Sprintf("client.receive.id-%d-%d", d.id, d.connID), func() error {
+		d.GoAndStop(fmt.Sprintf("client.receive.id-%d-%d", d.clientID, d.id), func() error {
 			return d.start(ctx)
 		}, func() error {
 			c.dialogMap.Delete(wrapper.WID)
@@ -101,23 +101,13 @@ func (c *BaseClient) Stop(ctx context.Context) (err error) {
 	return err
 }
 
-func (c *BaseClient) Send(pack xnet.Pack) error {
-	return c.SendSmux(pack, 0)
-}
-
-func (c *BaseClient) SendSmux(pack xnet.Pack, streamID int64) error {
-	dialog, ok := c.dialogMap.Load(streamID)
-	if !ok {
-		return errors.Errorf("dialog not found. id=%d", streamID)
-	}
-
-	return dialog.(*Dialog).send(pack)
-}
-
-func (c *BaseClient) Receive() <-chan xnet.Pack {
-	return c.receivedPackChan
-}
-
 func (c *BaseClient) Target() string {
 	return c.dialer.Target()
+}
+
+func (c *BaseClient) WalkDialogs(fn func(dialog xnet.ClientDialog)) {
+	c.dialogMap.Range(func(key, value any) bool {
+		fn(value.(*Dialog))
+		return true
+	})
 }

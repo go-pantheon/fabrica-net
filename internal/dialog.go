@@ -14,14 +14,17 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var _ xnet.ClientDialog = (*Dialog)(nil)
+
 type Dialog struct {
 	xsync.Stoppable
 
-	id     int64
-	connID int64
+	id       uint64
+	clientID int64
 
 	authFunc      client.AuthFunc
 	handshakePack HandshakePackFunc
+	authed        chan struct{}
 	session       xnet.Session
 
 	conn  net.Conn
@@ -30,22 +33,23 @@ type Dialog struct {
 	receivedPackChan chan xnet.Pack
 }
 
-func newDialog(id, connID int64, handshakePack HandshakePackFunc, wrapper ConnWrapper, authFunc client.AuthFunc, receivedPackChan chan xnet.Pack) *Dialog {
+func newDialog(cid int64, wid uint64, handshakePack HandshakePackFunc, wrapper ConnWrapper, authFunc client.AuthFunc) *Dialog {
 	return &Dialog{
 		Stoppable:        xsync.NewStopper(10 * time.Second),
-		id:               id,
-		connID:           connID,
+		clientID:         cid,
+		id:               wid,
 		authFunc:         authFunc,
 		handshakePack:    handshakePack,
+		authed:           make(chan struct{}),
 		session:          xnet.DefaultSession(),
 		conn:             wrapper.Conn,
 		codec:            wrapper.Codec,
-		receivedPackChan: receivedPackChan,
+		receivedPackChan: make(chan xnet.Pack, 1024),
 	}
 }
 
 func (d *Dialog) start(ctx context.Context) error {
-	handshakePack, err := d.handshakePack(d.connID)
+	handshakePack, err := d.handshakePack(d.id)
 	if err != nil {
 		return err
 	}
@@ -69,15 +73,35 @@ func (d *Dialog) start(ctx context.Context) error {
 		})
 	})
 
+	close(d.authed)
+
+	log.Infof("[dialog] %d-%d started.", d.clientID, d.id)
+
 	return eg.Wait()
 }
 
+func (d *Dialog) stop() (err error) {
+	return d.TurnOff(func() error {
+		close(d.receivedPackChan)
+
+		if d.conn != nil {
+			if closeErr := d.conn.Close(); closeErr != nil {
+				err = errors.Join(err, closeErr)
+			}
+		}
+
+		log.Infof("[dialog] %d-%d stopped.", d.clientID, d.id)
+
+		return err
+	})
+}
+
 func (d *Dialog) handshake(ctx context.Context, pack xnet.Pack) (err error) {
-	if err = d.send(pack); err != nil {
+	if err = d.Send(pack); err != nil {
 		return err
 	}
 
-	log.Infof("[SEND] auth %d %d %s", d.id, d.connID, pack)
+	log.Infof("[SEND] auth %d %d %s", d.clientID, d.id, pack)
 
 	pack, free, err := d.codec.Decode()
 	if err != nil {
@@ -118,7 +142,7 @@ func (d *Dialog) receiveLoop(ctx context.Context) error {
 	}
 }
 
-func (d *Dialog) send(pack xnet.Pack) (err error) {
+func (d *Dialog) Send(pack xnet.Pack) (err error) {
 	if d.OnStopping() {
 		return xsync.ErrIsStopped
 	}
@@ -130,18 +154,14 @@ func (d *Dialog) send(pack xnet.Pack) (err error) {
 	return d.codec.Encode(pack)
 }
 
-func (d *Dialog) stop() (err error) {
-	return d.TurnOff(func() error {
-		close(d.receivedPackChan)
+func (d *Dialog) Receive() <-chan xnet.Pack {
+	return d.receivedPackChan
+}
 
-		if d.conn != nil {
-			if closeErr := d.conn.Close(); closeErr != nil {
-				err = errors.Join(err, closeErr)
-			}
-		}
+func (d *Dialog) WaitAuthed() {
+	<-d.authed
+}
 
-		log.Infof("[dialog] %d-%d stopped.", d.id, d.connID)
-
-		return err
-	})
+func (d *Dialog) ID() uint64 {
+	return d.id
 }

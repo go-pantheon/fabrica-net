@@ -18,6 +18,7 @@ import (
 var _ internal.Dialer = (*Dialer)(nil)
 
 type Dialer struct {
+	clientID   int64
 	target     string
 	conf       conf.KCP
 	smux       *smux.Session
@@ -88,7 +89,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 			return nil, errors.Wrapf(streamErr, "create smux stream %d failed", i)
 		}
 
-		wrappers = append(wrappers, internal.NewConnWrapper(uint64(i), stream, frame.New(stream)))
+		wrappers = append(wrappers, internal.NewConnWrapper(uint64(d.clientID*100+int64(i)), stream, frame.New(stream)))
 	}
 
 	return wrappers, nil

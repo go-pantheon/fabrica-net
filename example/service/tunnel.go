@@ -36,7 +36,7 @@ func NewEchoTunnel(ss xnet.Session) *EchoTunnel {
 }
 
 func (t *EchoTunnel) CSHandle(msg xnet.TunnelMessage) error {
-	t.log.Infof("[RECV] echo %s", msg)
+	t.log.Infof("[RECV] %d echo %s", t.ss.ConnID(), msg)
 
 	return t.handle(msg)
 }
@@ -47,7 +47,7 @@ func (t *EchoTunnel) SCHandle() (xnet.TunnelMessage, error) {
 		return nil, errors.New("sc channel closed")
 	}
 
-	t.log.Infof("[SEND] echo %s", msg)
+	t.log.Infof("[SEND] %d echo %s", t.ss.ConnID(), msg)
 
 	return msg, nil
 }

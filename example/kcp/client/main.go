@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -66,14 +67,18 @@ func main() {
 			return sendEcho(cli)
 		}
 	})
-	eg.Go(func() error {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			return recvEcho(cli)
-		}
+
+	cli.WalkDialogs(func(dialog xnet.ClientDialog) {
+		eg.Go(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				return recvEcho(dialog)
+			}
+		})
 	})
+
 	eg.Go(func() error {
 		return monitor(ctx)
 	})
@@ -102,9 +107,9 @@ func main() {
 	}
 }
 
-func handshakePack(connID int64) (xnet.Pack, error) {
-	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, fmt.Appendf(nil, "Hi from KCP client-%d", connID), 0)
-	authMsg.ConnID = int32(connID)
+func handshakePack(dialogID uint64) (xnet.Pack, error) {
+	authMsg := message.NewPacket(message.ModAuth, 0, 1, 0, fmt.Appendf(nil, "Hi from KCP client-%d", dialogID), 0)
+	authMsg.ConnID = int32(dialogID)
 
 	authPack, err := json.Marshal(authMsg)
 	if err != nil {
@@ -112,7 +117,7 @@ func handshakePack(connID int64) (xnet.Pack, error) {
 	}
 
 	// Wait for server to start accepting smux connections
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Millisecond * 100)
 
 	return authPack, nil
 }
@@ -129,46 +134,50 @@ func authFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
 }
 
 func sendEcho(cli *kcp.Client) error {
-	streamSize := config.KCP.SmuxStreamSize
+	var wg sync.WaitGroup
 
-	size := 1
-	if config.KCP.Smux {
-		size = streamSize
-	}
+	cli.WalkDialogs(func(dialog xnet.ClientDialog) {
+		dialog.WaitAuthed()
+		wg.Add(1)
 
-	for streamID := 1; streamID <= size; streamID++ {
-		for index := range 20 {
-			msg := message.NewPacket(message.ModEcho, 0, 1, int32(index),
-				[]byte("Hello KCP"), 0)
+		xsync.Go(fmt.Sprintf("sendEcho-%d", dialog.ID()), func() error {
+			defer wg.Done()
 
-			if config.KCP.Smux {
-				msg.ConnID = int32(streamID)
+			for index := range 20 {
+				msg := message.NewPacket(message.ModEcho, 0, 1, int32(index),
+					[]byte("Hello KCP"), 0)
+				msg.ConnID = int32(dialog.ID())
+
+				pack, err := json.Marshal(msg)
+				if err != nil {
+					return errors.Wrap(err, "marshal message failed")
+				}
+
+				if err := dialog.Send(pack); err != nil {
+					return errors.Wrap(err, "send echo failed")
+				}
+
+				log.Infof("[SEND] %d echo %s", msg.ConnID, msg)
+				time.Sleep(500 * time.Millisecond)
 			}
 
-			pack, err := json.Marshal(msg)
-			if err != nil {
-				return errors.Wrap(err, "marshal message failed")
-			}
+			return nil
+		})
+	})
 
-			if err := cli.SendSmux(pack, int64(streamID)); err != nil {
-				return err
-			}
+	wg.Wait()
 
-			log.Infof("[SEND] %d echo %s", msg.ConnID, msg)
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
 	return nil
 }
 
-func recvEcho(cli *kcp.Client) error {
-	for pack := range cli.Receive() {
+func recvEcho(dialog xnet.ClientDialog) error {
+	for pack := range dialog.Receive() {
 		msg := &message.Packet{}
 		if err := json.Unmarshal(pack, msg); err != nil {
 			return errors.Wrap(err, "unmarshal echo recv pack failed")
 		}
 
-		log.Infof("[RECV] %d echo %s", msg.ConnID, msg)
+		log.Infof("[RECV] %d echo %s", dialog.ID(), msg)
 	}
 
 	return nil

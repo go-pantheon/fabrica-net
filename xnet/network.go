@@ -18,8 +18,11 @@ type Server interface {
 type Client interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
+}
 
-	Send(pack Pack) error
-	SendSmux(pack Pack, streamID int64) error
+type ClientDialog interface {
+	ID() uint64
+	Send(pack Pack) (err error)
 	Receive() <-chan Pack
+	WaitAuthed()
 }

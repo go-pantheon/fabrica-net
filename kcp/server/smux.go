@@ -49,7 +49,7 @@ func (s *Smux) start(ctx context.Context, streamChan chan internal.ConnWrapper) 
 		default:
 			stream, err := s.session.AcceptStream()
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "accept stream failed")
 			}
 
 			streamChan <- internal.NewConnWrapper(s.widGenerator.Next(), stream, frame.New(stream))
