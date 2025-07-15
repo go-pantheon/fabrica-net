@@ -27,7 +27,7 @@ var (
 )
 
 func main() {
-	config.KCP.Smux = false
+	// config.KCP.Smux = false
 
 	if err := frame.InitMOBARingPool(); err != nil {
 		log.Errorf("failed to initialize MOBA ring pool: %+v", err)
@@ -131,26 +131,30 @@ func authFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
 func sendEcho(cli *kcp.Client) error {
 	streamSize := config.KCP.SmuxStreamSize
 
-	for i := range 20 {
-		msg := message.NewPacket(message.ModEcho, 0, 1, int32(i),
-			[]byte("Hello from KCP! This is a gaming-optimized message for low latency communication."), 0)
+	size := 1
+	if config.KCP.Smux {
+		size = streamSize + 1
+	}
 
-		if config.KCP.Smux {
-			msg.StreamID = int32(i % streamSize)
+	for i := 0; i < size; i++ {
+		for i := range 20 {
+			msg := message.NewPacket(message.ModEcho, 0, 1, int32(i),
+				[]byte("Hello from KCP! This is a gaming-optimized message for low latency communication."), 0)
+			msg.StreamID = int32(i)
+
+			pack, err := json.Marshal(msg)
+			if err != nil {
+				return errors.Wrap(err, "marshal message failed")
+			}
+
+			if err := cli.Send(pack); err != nil {
+				return err
+			}
+
+			log.Infof("[SEND] %d echo %s", msg.StreamID, msg)
+
+			time.Sleep(500 * time.Millisecond)
 		}
-
-		pack, err := json.Marshal(msg)
-		if err != nil {
-			return errors.Wrap(err, "marshal message failed")
-		}
-
-		if err := cli.Send(pack); err != nil {
-			return err
-		}
-
-		log.Infof("[SEND] %d echo %s", msg.StreamID, msg)
-
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	return ErrSendFinished

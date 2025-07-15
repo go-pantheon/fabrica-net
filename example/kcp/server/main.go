@@ -20,7 +20,7 @@ var (
 )
 
 func main() {
-	config.KCP.Smux = false
+	// config.KCP.Smux = false
 
 	if err := frame.InitMOBARingPool(); err != nil {
 		log.Errorf("failed to initialize MOBA ring pool: %+v", err)

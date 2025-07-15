@@ -47,15 +47,14 @@ func (c *BaseClient) Start(ctx context.Context) (err error) {
 		return errors.Wrapf(err, "connect failed. target=%s", c.dialer.Target())
 	}
 
-	for i, wrapper := range wrappers {
-		id := int64(i)
-		d := newDialog(c.Id, id, c.handshakePack, wrapper, c.AuthFunc(), c.receivedPackChan)
-		c.dialogMap.Store(id, d)
+	for _, wrapper := range wrappers {
+		d := newDialog(c.Id, int64(wrapper.ID), c.handshakePack, wrapper, c.AuthFunc(), c.receivedPackChan)
+		c.dialogMap.Store(wrapper.ID, d)
 
 		d.GoAndStop(fmt.Sprintf("client.receive.id-%d-%d", d.uid, d.id), func() error {
 			return d.start(ctx)
 		}, func() error {
-			c.dialogMap.Delete(id)
+			c.dialogMap.Delete(wrapper.ID)
 			return d.stop()
 		})
 	}

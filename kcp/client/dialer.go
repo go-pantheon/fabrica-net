@@ -73,7 +73,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 			return
 		}
 
-		for _, wrapper := range wrappers[1:] {
+		for _, wrapper := range wrappers {
 			if closeErr := wrapper.Close(); closeErr != nil {
 				err = errors.JoinUnsimilar(err, errors.Wrapf(closeErr, "close stream during cleanup failed"))
 			}
@@ -84,22 +84,22 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 				err = errors.JoinUnsimilar(err, errors.Wrapf(closeErr, "close session during cleanup failed"))
 			}
 		}
-
-		if closeErr := conn.Close(); closeErr != nil {
-			err = errors.JoinUnsimilar(err, errors.Wrapf(closeErr, "close connection during cleanup failed"))
-		}
 	}()
 
-	for i := 0; i < d.conf.SmuxStreamSize; i++ {
+	for i := 1; i <= d.conf.SmuxStreamSize; i++ {
 		stream, streamErr := session.OpenStream()
 		if streamErr != nil {
 			return nil, errors.Wrapf(streamErr, "create smux stream %d failed", i)
 		}
 
-		wrappers = append(wrappers, internal.NewConnWrapper(uint64(d.id), stream, frame.New(stream)))
+		wrappers = append(wrappers, internal.NewConnWrapper(connID(d.id, i), stream, frame.New(stream)))
 	}
 
 	return wrappers, nil
+}
+
+func connID(id int64, i int) uint64 {
+	return uint64(id)<<4 | uint64(i)
 }
 
 func (d *Dialer) Stop(ctx context.Context) error {
