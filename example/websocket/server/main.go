@@ -17,7 +17,7 @@ func main() {
 	svc := service.New()
 
 	svr, err := ws.NewServer(":8080", "/ws", svc,
-		server.WithReadLimit(1024*1024),
+		server.WithWsReadLimit(1024*1024),
 		server.WithPongRenewal(time.Second*10))
 	if err != nil {
 		log.Errorf("failed to create server: %v", err)

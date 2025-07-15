@@ -66,7 +66,7 @@ func WithAfterDisconnect(f Inspector) Option {
 	}
 }
 
-func WithReadLimit(limit int64) Option {
+func WithWsReadLimit(limit int64) Option {
 	return func(o *Options) {
 		o.afterConnect = Wrap(o.afterConnect, func(f InspectorFunc) InspectorFunc {
 			return func(ctx context.Context, w xnet.Worker) error {

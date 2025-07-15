@@ -8,14 +8,15 @@ import (
 )
 
 var (
-	totalEncodes   atomic.Uint64
-	totalDecodes   atomic.Uint64
-	totalBytesIn   atomic.Uint64
-	totalBytesOut  atomic.Uint64
-	encodeErrors   atomic.Uint64
-	decodeErrors   atomic.Uint64
-	poolHits       atomic.Uint64
-	poolMisses     atomic.Uint64
+	totalEncodes  atomic.Uint64
+	totalDecodes  atomic.Uint64
+	totalBytesIn  atomic.Uint64
+	totalBytesOut atomic.Uint64
+	encodeErrors  atomic.Uint64
+	decodeErrors  atomic.Uint64
+	poolHits      atomic.Uint64
+	poolMisses    atomic.Uint64
+
 	lastStatsReset atomic.Value
 )
 
@@ -34,9 +35,14 @@ type CodecStats struct {
 }
 
 func GetPoolStats() map[int]ringpool.PoolStats {
+	if pool == nil {
+		return nil
+	}
+
 	if multiPool, ok := pool.(*ringpool.MultiSizeRingPool); ok {
 		return multiPool.Stats()
 	}
+
 	return nil
 }
 

@@ -47,13 +47,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) (net.Conn, []internal.
 		return nil, nil, err
 	}
 
-	if err := d.configurer.ConfigureConnection(conn); err != nil {
-		if closeErr := conn.Close(); closeErr != nil {
-			err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed. target=%s", target))
-		}
-
-		return nil, nil, err
-	}
+	d.configurer.ConfigureConnection(conn)
 
 	if !d.conf.Smux {
 		return conn, []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, frame.New(conn))}, nil

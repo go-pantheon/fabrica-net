@@ -21,15 +21,15 @@ var (
 
 var (
 	MOBAPoolConfig = map[int]uint64{
-		32:   16384, // 32B * 16384 = 512KB - Player inputs, heartbeats
-		64:   12288, // 64B * 12288 = 768KB - Quick commands, mini updates
-		128:  8192,  // 128B * 8192 = 1MB - Position sync, small state updates
-		256:  6144,  // 256B * 6144 = 1.5MB - Skill casts, medium updates
-		512:  4096,  // 512B * 4096 = 2MB - Game state chunks
-		1024: 2048,  // 1KB * 2048 = 2MB - Batch updates, larger game events
-		2048: 1024,  // 2KB * 1024 = 2MB - Map section updates
-		4096: 512,   // 4KB * 512 = 2MB - Large batch operations
-		8192: 256,   // 8KB * 256 = 2MB - Asset data, replay chunks
+		32:   16384, // 32B * 16384 = 512KB - Player inputs, heartbeats (2^14)
+		64:   8192,  // 64B * 8192 = 512KB - Quick commands, mini updates (2^13)
+		128:  8192,  // 128B * 8192 = 1MB - Position sync, state updates (2^13)
+		256:  4096,  // 256B * 4096 = 1MB - Skill casts, medium updates (2^12)
+		512:  4096,  // 512B * 4096 = 2MB - Game state chunks (2^12)
+		1024: 2048,  // 1KB * 2048 = 2MB - Batch updates, events (2^11)
+		2048: 1024,  // 2KB * 1024 = 2MB - Map section updates (2^10)
+		4096: 512,   // 4KB * 512 = 2MB - Large batch operations (2^9)
+		8192: 256,   // 8KB * 256 = 2MB - Asset data, replay chunks (2^8)
 	}
 )
 
@@ -43,6 +43,11 @@ func init() {
 	lastStatsReset.Store(time.Now())
 }
 
+// InitMOBARingPool creates optimized pools for MOBA game traffic patterns
+func InitMOBARingPool() error {
+	return InitKcpRingPool(MOBAPoolConfig)
+}
+
 func InitKcpRingPool(sizeCapacityMap map[int]uint64) (err error) {
 	once.Do(func() {
 		pool, err = ringpool.NewMultiSizeRingPool(sizeCapacityMap)
@@ -52,11 +57,6 @@ func InitKcpRingPool(sizeCapacityMap map[int]uint64) (err error) {
 	})
 
 	return nil
-}
-
-// InitMOBARingPool creates optimized pools for MOBA game traffic patterns
-func InitMOBARingPool() error {
-	return InitKcpRingPool(MOBAPoolConfig)
 }
 
 var _ codec.Codec = (*kcpCodec)(nil)

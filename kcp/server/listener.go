@@ -108,13 +108,7 @@ func (l *Listener) accept(ctx context.Context) (internal.ConnWrapper, error) {
 		return internal.ConnWrapper{}, errors.Wrapf(err, "accept kcp failed")
 	}
 
-	if err := l.configurer.ConfigureConnection(conn); err != nil {
-		if closeErr := conn.Close(); closeErr != nil {
-			err = errors.Join(err, errors.Wrapf(closeErr, "close kcp connection failed"))
-		}
-
-		return internal.ConnWrapper{}, err
-	}
+	l.configurer.ConfigureConnection(conn)
 
 	if l.conf.Smux {
 		if err := l.initSmux(ctx, conn); err != nil {

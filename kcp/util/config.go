@@ -57,27 +57,13 @@ func NewConnConfigurer(conf conf.KCP) *ConnConfigurer {
 	return &ConnConfigurer{conf: conf}
 }
 
-func (c *ConnConfigurer) ConfigureConnection(conn *kcpgo.UDPSession) error {
+func (c *ConnConfigurer) ConfigureConnection(conn *kcpgo.UDPSession) {
 	// Set KCP protocol parameters
 	conn.SetNoDelay(c.conf.NoDelay[0], c.conf.NoDelay[1], c.conf.NoDelay[2], c.conf.NoDelay[3])
 	conn.SetWindowSize(c.conf.WindowSize[0], c.conf.WindowSize[1])
 	conn.SetMtu(c.conf.MTU)
 	conn.SetACKNoDelay(c.conf.ACKNoDelay)
 	conn.SetWriteDelay(c.conf.WriteDelay)
-
-	if err := conn.SetReadBuffer(c.conf.ReadBufSize); err != nil {
-		return errors.Wrapf(err, "set read buffer failed")
-	}
-
-	if err := conn.SetWriteBuffer(c.conf.WriteBufSize); err != nil {
-		return errors.Wrapf(err, "set write buffer failed")
-	}
-
-	if err := conn.SetDSCP(c.conf.DSCP); err != nil {
-		return errors.Wrapf(err, "set dscp failed")
-	}
-
-	return nil
 }
 
 func (c *ConnConfigurer) CreateSmuxConfig() *smux.Config {
