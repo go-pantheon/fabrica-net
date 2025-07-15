@@ -133,31 +133,32 @@ func sendEcho(cli *kcp.Client) error {
 
 	size := 1
 	if config.KCP.Smux {
-		size = streamSize + 1
+		size = streamSize
 	}
 
-	for i := 0; i < size; i++ {
-		for i := range 20 {
-			msg := message.NewPacket(message.ModEcho, 0, 1, int32(i),
+	for streamID := 1; streamID <= size; streamID++ {
+		for index := range 20 {
+			msg := message.NewPacket(message.ModEcho, 0, 1, int32(index),
 				[]byte("Hello from KCP! This is a gaming-optimized message for low latency communication."), 0)
-			msg.StreamID = int32(i)
+
+			if config.KCP.Smux {
+				msg.StreamID = int32(streamID)
+			}
 
 			pack, err := json.Marshal(msg)
 			if err != nil {
 				return errors.Wrap(err, "marshal message failed")
 			}
 
-			if err := cli.Send(pack); err != nil {
+			if err := cli.SendSmux(pack, int64(streamID)); err != nil {
 				return err
 			}
 
 			log.Infof("[SEND] %d echo %s", msg.StreamID, msg)
-
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
-
-	return ErrSendFinished
+	return nil
 }
 
 func recvEcho(cli *kcp.Client) error {

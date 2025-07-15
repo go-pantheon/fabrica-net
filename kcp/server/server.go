@@ -47,7 +47,7 @@ func NewServer(bind string, svc xnet.Service, opts ...server.Option) (*Server, e
 
 // Start starts the KCP server
 func (s *Server) Start(ctx context.Context) error {
-	log.Infof("[kcp.Server] starting on %s", s.bind)
+	log.Infof("[kcp.Server] starting on %s smux=%t streamSize=%d", s.bind, s.Conf().KCP.Smux, s.Conf().KCP.SmuxStreamSize)
 	return s.BaseServer.Start(ctx)
 }
 

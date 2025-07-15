@@ -93,13 +93,15 @@ func (l *Listener) Accept(ctx context.Context) (internal.ConnWrapper, error) {
 				return internal.ConnWrapper{}, err
 			}
 
-			if l.conf.Smux {
-				if err := l.startSmux(ctx, wrapper); err != nil {
-					return internal.ConnWrapper{}, err
-				}
+			if !l.conf.Smux {
+				return wrapper, nil
 			}
 
-			return wrapper, nil
+			if err := l.startSmux(ctx, wrapper); err != nil {
+				return internal.ConnWrapper{}, err
+			}
+
+			continue
 		}
 	}
 }

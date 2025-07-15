@@ -37,7 +37,7 @@ func NewClient(id int64, target string, handshakePack xnet.Pack, opts ...client.
 
 // Start starts the KCP client
 func (c *Client) Start(ctx context.Context) error {
-	log.Infof("[kcp.Client] connecting to %s", c.target)
+	log.Infof("[kcp.Client] connecting to %s smux=%t streamSize=%d", c.target, c.Conf().KCP.Smux, c.Conf().KCP.SmuxStreamSize)
 	return c.BaseClient.Start(ctx)
 }
 

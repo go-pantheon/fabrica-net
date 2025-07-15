@@ -18,7 +18,6 @@ import (
 var _ internal.Dialer = (*Dialer)(nil)
 
 type Dialer struct {
-	id         int64
 	target     string
 	conf       conf.KCP
 	smux       *smux.Session
@@ -33,7 +32,6 @@ func NewDialer(id int64, target string, conf conf.KCP) (*Dialer, error) {
 	}
 
 	return &Dialer{
-		id:         id,
 		target:     target,
 		conf:       conf,
 		configurer: util.NewConnConfigurer(conf),
@@ -42,8 +40,6 @@ func NewDialer(id int64, target string, conf conf.KCP) (*Dialer, error) {
 }
 
 func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrapper, error) {
-	wrappers := make([]internal.ConnWrapper, 0, d.conf.SmuxStreamSize+1)
-
 	conn, err := d.dial(ctx, target, time.Second*10)
 	if err != nil {
 		return nil, err
@@ -51,10 +47,8 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 
 	d.configurer.ConfigureConnection(conn)
 
-	wrappers = append(wrappers, internal.NewConnWrapper(uint64(d.id), conn, frame.New(conn)))
-
 	if !d.conf.Smux {
-		return wrappers, nil
+		return []internal.ConnWrapper{internal.NewConnWrapper(0, conn, frame.New(conn))}, nil
 	}
 
 	session, err := smux.Client(conn, d.configurer.CreateSmuxConfig())
@@ -67,6 +61,8 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 	}
 
 	d.smux = session
+
+	wrappers := make([]internal.ConnWrapper, 0, d.conf.SmuxStreamSize)
 
 	defer func() {
 		if err == nil {
@@ -92,24 +88,10 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 			return nil, errors.Wrapf(streamErr, "create smux stream %d failed", i)
 		}
 
-		wrappers = append(wrappers, internal.NewConnWrapper(connID(d.id, i), stream, frame.New(stream)))
+		wrappers = append(wrappers, internal.NewConnWrapper(uint64(i), stream, frame.New(stream)))
 	}
 
 	return wrappers, nil
-}
-
-func connID(id int64, i int) uint64 {
-	return uint64(id)<<4 | uint64(i)
-}
-
-func (d *Dialer) Stop(ctx context.Context) error {
-	if d.smux != nil {
-		if err := d.smux.Close(); err != nil {
-			return errors.Wrapf(err, "close smux session failed")
-		}
-	}
-
-	return nil
 }
 
 func (d *Dialer) dial(ctx context.Context, target string, timeout time.Duration) (conn *kcpgo.UDPSession, err error) {
@@ -122,6 +104,16 @@ func (d *Dialer) dial(ctx context.Context, target string, timeout time.Duration)
 	}, timeout)
 
 	return conn, err
+}
+
+func (d *Dialer) Stop(ctx context.Context) error {
+	if d.smux != nil {
+		if err := d.smux.Close(); err != nil {
+			return errors.Wrapf(err, "close smux session failed")
+		}
+	}
+
+	return nil
 }
 
 func (d *Dialer) Target() string {

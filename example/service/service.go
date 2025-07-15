@@ -41,7 +41,7 @@ func (s *Service) Auth(ctx context.Context, in xnet.Pack) (out xnet.Pack, ss xne
 		return nil, nil, errors.Wrap(err, "packet marshal failed")
 	}
 
-	log.Infof("[send] auth %s", p)
+	log.Infof("[SEND] auth %s", p)
 
 	return
 }

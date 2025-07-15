@@ -99,17 +99,8 @@ func (c *BaseClient) Stop(ctx context.Context) (err error) {
 	return err
 }
 
-func (c *BaseClient) Send(pack xnet.Pack) (err error) {
-	c.dialogMap.Range(func(key, value any) bool {
-		dialog := value.(*Dialog)
-		if sendErr := dialog.send(pack); sendErr != nil {
-			err = errors.Join(err, errors.Wrapf(sendErr, "send pack failed. id=%d", dialog.uid))
-		}
-
-		return false
-	})
-
-	return nil
+func (c *BaseClient) Send(pack xnet.Pack) error {
+	return c.SendSmux(pack, 0)
 }
 
 func (c *BaseClient) SendSmux(pack xnet.Pack, streamID int64) error {
