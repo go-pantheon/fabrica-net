@@ -74,13 +74,11 @@ func main() {
 		}
 	})
 
-	if err := eg.Wait(); err != nil &&
-		!errors.Is(err, context.Canceled) &&
-		!errors.Is(err, xsync.ErrSignalStop) {
+	if err := eg.Wait(); err != nil {
 		log.Errorf("stop client failed. %+v", err)
-	} else {
-		log.Infof("client stopped")
 	}
+
+	log.Infof("client stopped")
 }
 
 func handshakePack(wid uint64) (xnet.Pack, error) {
@@ -100,7 +98,7 @@ func authFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
 		return nil, errors.Wrap(err, "unmarshal auth pack failed")
 	}
 
-	log.Infof("[RECV] auth %s", authMsg)
+	log.Infof("[RECV] %d auth %s", authMsg.ConnID, authMsg)
 
 	return xnet.DefaultSession(), nil
 }
@@ -127,8 +125,8 @@ func sendEcho(cli *ws.Client) error {
 					return errors.Wrap(err, "send echo failed")
 				}
 
-				log.Infof("[send] echo %s", msg)
-				time.Sleep(time.Second * 1)
+				log.Infof("[SEND] %d echo %s", dialog.ID(), msg)
+				time.Sleep(time.Millisecond * 500)
 			}
 
 			return nil
@@ -147,7 +145,7 @@ func recvEcho(dialog xnet.ClientDialog) error {
 			return errors.Wrap(err, "unmarshal echo recv pack failed")
 		}
 
-		log.Infof("[RECV] echo %s", msg)
+		log.Infof("[RECV] %d echo %s", dialog.ID(), msg)
 	}
 
 	return nil

@@ -158,7 +158,7 @@ func sendEcho(cli *kcp.Client) error {
 				}
 
 				log.Infof("[SEND] %d echo %s", msg.ConnID, msg)
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(1200 * time.Millisecond)
 			}
 
 			return nil

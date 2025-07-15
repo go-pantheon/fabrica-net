@@ -33,11 +33,11 @@ type Dialog struct {
 	receivedPackChan chan xnet.Pack
 }
 
-func newDialog(cid int64, wid uint64, handshakePack HandshakePackFunc, wrapper ConnWrapper, authFunc client.AuthFunc) *Dialog {
+func newDialog(id uint64, cid int64, handshakePack HandshakePackFunc, wrapper ConnWrapper, authFunc client.AuthFunc) *Dialog {
 	return &Dialog{
 		Stoppable:        xsync.NewStopper(10 * time.Second),
+		id:               id,
 		clientID:         cid,
-		id:               wid,
 		authFunc:         authFunc,
 		handshakePack:    handshakePack,
 		authed:           make(chan struct{}),

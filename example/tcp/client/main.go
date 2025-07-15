@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/client"
@@ -98,7 +99,7 @@ func authFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
 		return nil, errors.Wrap(err, "unmarshal auth pack failed")
 	}
 
-	log.Infof("[recv] auth %s", authMsg)
+	log.Infof("[RECV] %d auth %s", authMsg.ConnID, authMsg)
 
 	return xnet.DefaultSession(), nil
 }
@@ -126,6 +127,7 @@ func sendEcho(cli *tcp.Client) error {
 				}
 
 				log.Infof("[SEND] %d echo %s", dialog.ID(), msg)
+				time.Sleep(time.Millisecond * 500)
 			}
 
 			return nil
