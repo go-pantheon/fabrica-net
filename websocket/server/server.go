@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"context"
-	"net/url"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/internal"
@@ -45,8 +44,4 @@ func (s *Server) Start(ctx context.Context) error {
 func (s *Server) Stop(ctx context.Context) error {
 	log.Infof("[websocket.Server] stopping")
 	return s.BaseServer.Stop(ctx)
-}
-
-func (s *Server) Endpoint() (*url.URL, error) {
-	return s.BaseServer.Endpoint()
 }

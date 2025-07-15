@@ -93,10 +93,5 @@ func (l *Listener) configure(conn net.Conn) error {
 }
 
 func (l *Listener) Endpoint() (string, error) {
-	addr, err := util.Extract(l.bind, l.listener)
-	if err != nil {
-		return "", err
-	}
-
-	return "tcp://" + addr, nil
+	return "tcp://" + l.bind, nil
 }

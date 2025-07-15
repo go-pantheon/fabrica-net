@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 
 	"github.com/go-kratos/kratos/v2/transport"
@@ -94,17 +93,10 @@ func InternalIP() string {
 // Extract returns a private address and port from the given hostPort string.
 // If a listener is provided, its actual port will be used.
 // Returns an error if no suitable address could be determined.
-func Extract(hostPort string, lis net.Listener) (string, error) {
+func Extract(hostPort string) (string, error) {
 	addr, port, err := net.SplitHostPort(hostPort)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrInvalidHostPort, err)
-	}
-
-	// Use the listener's port if available
-	if lis != nil {
-		if p, ok := Port(lis); ok {
-			port = strconv.Itoa(p)
-		}
 	}
 
 	// If a specific address is provided and it's not a placeholder, use it
@@ -147,21 +139,6 @@ func Extract(hostPort string, lis net.Listener) (string, error) {
 	}
 
 	return "", ErrNoPrivateIPFound
-}
-
-// Port returns the actual port number of a listener.
-// Returns the port number and true if successful, or 0 and false otherwise.
-func Port(lis net.Listener) (int, bool) {
-	if lis == nil {
-		return 0, false
-	}
-
-	addr, ok := lis.Addr().(*net.TCPAddr)
-	if !ok {
-		return 0, false
-	}
-
-	return addr.Port, true
 }
 
 // isPrivateIP determines if an IP address is within private address ranges.
