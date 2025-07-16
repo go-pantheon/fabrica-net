@@ -18,6 +18,8 @@ type Server interface {
 type Client interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
+	Dialog(dialogID uint64) ClientDialog
+	DefaultDialog() (d ClientDialog, ok bool)
 }
 
 type ClientDialog interface {

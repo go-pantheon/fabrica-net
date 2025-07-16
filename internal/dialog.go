@@ -22,7 +22,7 @@ type Dialog struct {
 	clientID int64
 
 	authFunc      client.AuthFunc
-	handshakePack HandshakePackFunc
+	handshakePack client.HandshakePackFunc
 	authed        chan struct{}
 	session       xnet.Session
 
@@ -32,7 +32,7 @@ type Dialog struct {
 	receivedPackChan chan xnet.Pack
 }
 
-func newDialog(id uint64, cid int64, handshakePack HandshakePackFunc, wrapper ConnWrapper, authFunc client.AuthFunc) *Dialog {
+func newDialog(id uint64, cid int64, handshakePack client.HandshakePackFunc, wrapper ConnWrapper, authFunc client.AuthFunc) *Dialog {
 	return &Dialog{
 		Stoppable:        xsync.NewStopper(10 * time.Second),
 		id:               id,

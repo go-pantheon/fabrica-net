@@ -14,7 +14,7 @@ type Client struct {
 	url string
 }
 
-func NewClient(id int64, url string, handshakePack internal.HandshakePackFunc, opts ...client.Option) *Client {
+func NewClient(id int64, url string, handshakePack client.HandshakePackFunc, opts ...client.Option) *Client {
 	baseClient := internal.NewBaseClient(id, handshakePack, newDialer(id, url, "*"), client.NewOptions(opts...))
 
 	return &Client{

@@ -15,14 +15,12 @@ import (
 
 var _ xnet.Client = (*BaseClient)(nil)
 
-type HandshakePackFunc func(wid uint64) (xnet.Pack, error)
-
 type BaseClient struct {
 	*client.Options
 
 	Id int64
 
-	handshakePack HandshakePackFunc
+	handshakePack client.HandshakePackFunc
 
 	dialer    Dialer
 	dialogMap *sync.Map
@@ -30,7 +28,7 @@ type BaseClient struct {
 	receivedPackChan chan xnet.Pack
 }
 
-func NewBaseClient(id int64, handshakePack HandshakePackFunc, dialer Dialer, options *client.Options) *BaseClient {
+func NewBaseClient(id int64, handshakePack client.HandshakePackFunc, dialer Dialer, options *client.Options) *BaseClient {
 	c := &BaseClient{
 		Options:          options,
 		Id:               id,
@@ -110,4 +108,20 @@ func (c *BaseClient) WalkDialogs(fn func(dialog xnet.ClientDialog)) {
 		fn(value.(*Dialog))
 		return true
 	})
+}
+
+func (c *BaseClient) Dialog(dialogID uint64) xnet.ClientDialog {
+	if dialog, ok := c.dialogMap.Load(dialogID); ok {
+		return dialog.(*Dialog)
+	}
+
+	return nil
+}
+
+func (c *BaseClient) DefaultDialog() (xnet.ClientDialog, bool) {
+	if dialog, ok := c.dialogMap.Load(0); ok {
+		return dialog.(*Dialog), true
+	}
+
+	return nil, false
 }

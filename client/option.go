@@ -15,6 +15,8 @@ type Option func(o *Options)
 
 type AuthFunc func(ctx context.Context, pack xnet.Pack) (xnet.Session, error)
 
+type HandshakePackFunc func(wid uint64) (xnet.Pack, error)
+
 func WithAuthFunc(authFunc AuthFunc) Option {
 	return func(o *Options) {
 		o.authFunc = authFunc

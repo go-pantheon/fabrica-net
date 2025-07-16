@@ -19,7 +19,7 @@ type Client struct {
 }
 
 // NewClient creates a new KCP client
-func NewClient(id int64, target string, handshakePack internal.HandshakePackFunc, opts ...client.Option) (*Client, error) {
+func NewClient(id int64, target string, handshakePack client.HandshakePackFunc, opts ...client.Option) (*Client, error) {
 	options := client.NewOptions(opts...)
 
 	dialer, err := NewDialer(id, target, options.Conf().KCP)
