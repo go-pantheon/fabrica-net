@@ -4,8 +4,6 @@ import (
 	"context"
 	"net"
 	"sync/atomic"
-
-	"github.com/go-pantheon/fabrica-net/codec"
 )
 
 const (
@@ -32,10 +30,10 @@ type Listener interface {
 type ConnWrapper struct {
 	WID   uint64
 	Conn  net.Conn
-	Codec codec.Codec
+	Codec Codec
 }
 
-func NewConnWrapper(wid uint64, conn net.Conn, codec codec.Codec) ConnWrapper {
+func NewConnWrapper(wid uint64, conn net.Conn, codec Codec) ConnWrapper {
 	return ConnWrapper{
 		WID:   wid,
 		Conn:  conn,

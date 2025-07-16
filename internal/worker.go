@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/middleware"
-	"github.com/go-pantheon/fabrica-net/codec"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal/util"
 	"github.com/go-pantheon/fabrica-net/xnet"
@@ -26,7 +25,7 @@ type Worker struct {
 
 	id        uint64
 	conn      net.Conn
-	codec     codec.Codec
+	codec     Codec
 	connected atomic.Bool
 	session   xnet.Session
 
@@ -44,7 +43,7 @@ type Worker struct {
 }
 
 func newWorker(wid uint64, conn net.Conn, conf conf.Worker, referer string,
-	codec codec.Codec, readFilter, writeFilter middleware.Middleware, svc xnet.Service,
+	codec Codec, readFilter, writeFilter middleware.Middleware, svc xnet.Service,
 ) *Worker {
 	w := &Worker{
 		Stoppable:     xsync.NewStopper(conf.StopTimeout),

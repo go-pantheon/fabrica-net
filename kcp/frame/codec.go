@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-pantheon/fabrica-net/codec"
+	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/internal/ringpool"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
@@ -59,7 +59,7 @@ func InitKcpRingPool(sizeCapacityMap map[int]uint64) (err error) {
 	return nil
 }
 
-var _ codec.Codec = (*kcpCodec)(nil)
+var _ internal.Codec = (*kcpCodec)(nil)
 
 type kcpCodec struct {
 	conn   net.Conn
@@ -67,7 +67,7 @@ type kcpCodec struct {
 	writer *bufio.Writer
 }
 
-func New(conn net.Conn) codec.Codec {
+func New(conn net.Conn) internal.Codec {
 	return &kcpCodec{
 		conn:   conn,
 		reader: bufio.NewReader(conn),

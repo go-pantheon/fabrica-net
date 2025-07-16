@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/client"
-	"github.com/go-pantheon/fabrica-net/codec"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/go-pantheon/fabrica-util/xsync"
@@ -28,7 +27,7 @@ type Dialog struct {
 	session       xnet.Session
 
 	conn  net.Conn
-	codec codec.Codec
+	codec Codec
 
 	receivedPackChan chan xnet.Pack
 }
