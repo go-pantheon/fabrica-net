@@ -12,7 +12,7 @@
 <a href="https://deepwiki.com/go-pantheon/fabrica-net"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 
-> **Language**: [English](README.md) | [中文](README_CN.md)
+> **Language**: [English](README.md) | [中文](README_zh.md)
 
 ## About Fabrica Net
 
@@ -43,17 +43,45 @@ For more information, please check out: [deepwiki/go-pantheon/fabrica-net](https
 ## Network Protocols
 
 ### TCP Server (`tcp/server/`)
-High-performance TCP server with connection pooling:
-- Multi-worker architecture for concurrent connection handling
-- Configurable buffer sizes and keep-alive settings
-- Connection lifecycle management with hooks
-- Middleware support for request/response filtering
+High-performance TCP server with worker pool architecture:
+- Accept loop workers for concurrent connection handling
+- Worker manager with bucket-based connection storage
+- Configurable buffer sizes and TCP keep-alive settings
+- Connection lifecycle management with before/after hooks
+- Built-in support for push, multicast, and broadcast messaging
 
 ### TCP Client (`tcp/client/`)
-Robust TCP client with auto-reconnection:
-- Encrypted communication with session management
-- Retry mechanisms with exponential backoff
-- Connection state tracking and recovery
+TCP client with dialog-based connection management:
+- Single connection per client with frame-based communication
+- Session-based encrypted communication with handshake protocol
+- Dialog abstraction for connection state management
+- Asynchronous receive channel for incoming messages
+
+### KCP Server (`kcp/server/`)
+High-performance UDP-based KCP server:
+- Stream multiplexing with smux for multiple connections over single UDP session
+- Forward Error Correction (FEC) support for reliability
+- Configurable acknowledgment intervals and window sizes
+- Optimized for low-latency, unreliable network conditions
+
+### KCP Client (`kcp/client/`)
+KCP client with reliability features:
+- Automatic ARQ (Automatic Repeat reQuest) for packet loss recovery
+- Congestion control algorithms optimized for gaming
+- Stream multiplexing support for concurrent data streams
+
+### WebSocket Server (`websocket/server/`)
+WebSocket server with path-based routing:
+- HTTP upgrade handling with configurable paths
+- Integration with existing worker pool architecture
+- Support for both text and binary WebSocket frames
+- Compatible with standard WebSocket protocol (RFC 6455)
+
+### WebSocket Client (`websocket/client/`)
+WebSocket client implementation:
+- Gorilla WebSocket-based implementation
+- Message framing and protocol compliance
+- Integration with session management system
 
 ### Network Abstractions (`xnet/`)
 Core network abstractions and utilities:
@@ -66,16 +94,19 @@ Core network abstractions and utilities:
 
 | Technology/Component | Purpose                      | Version |
 | -------------------- | ---------------------------- | ------- |
-| Go                   | Primary development language | 1.24+   |
+| Go                   | Primary development language | 1.24.4+ |
 | go-kratos            | Microservices framework      | v2.8.4  |
-| fabrica-util         | Common utilities library     | v0.0.20 |
+| fabrica-util         | Common utilities library     | v0.0.35 |
 | Prometheus           | Metrics and monitoring       | v1.22.0 |
 | gRPC                 | Inter-service communication  | v1.73.0 |
-| golang.org/x/crypto  | Cryptographic operations     | v0.39.0 |
+| golang.org/x/crypto  | Cryptographic operations     | v0.40.0 |
+| gorilla/websocket    | WebSocket implementation     | v1.5.3  |
+| xtaci/kcp-go         | KCP protocol support         | v5.6.22 |
+| xtaci/smux           | Stream multiplexing          | v1.5.34 |
 
 ## Requirements
 
-- Go 1.24+
+- Go 1.24.4+
 
 ## Quick Start
 
@@ -261,6 +292,89 @@ func main() {
 }
 ```
 
+### KCP Server Example
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/go-pantheon/fabrica-net/kcp"
+    "github.com/go-pantheon/fabrica-net/xnet"
+)
+
+func main() {
+    service := &GameService{} // Same service implementation as TCP example
+
+    srv, err := kcp.NewServer(":8081", service)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    if err := srv.Start(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer srv.Stop(ctx)
+
+    // Wait for interrupt signal
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+    <-c
+
+    log.Printf("KCP server stopped")
+}
+```
+
+### WebSocket Server Example
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/go-pantheon/fabrica-net/websocket"
+    "github.com/go-pantheon/fabrica-net/xnet"
+)
+
+func main() {
+    service := &GameService{} // Same service implementation as TCP example
+
+    // Create WebSocket server with path
+    srv, err := websocket.NewServer(":8082", "/ws", service)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    if err := srv.Start(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer srv.Stop(ctx)
+
+    // Wait for interrupt signal
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+    <-c
+
+    log.Printf("WebSocket server stopped")
+}
+```
+
 ### Configuration Setup
 
 ```go
@@ -307,31 +421,48 @@ func main() {
 .
 ├── tcp/                # TCP protocol implementation
 │   ├── server/         # TCP server with worker pool
-│   └── client/         # TCP client with auto-reconnection
+│   ├── client/         # TCP client with auto-reconnection
+│   └── frame/          # TCP frame codec
+├── kcp/                # KCP (UDP-based) protocol implementation
+│   ├── server/         # KCP server with smux multiplexing
+│   ├── client/         # KCP client implementation
+│   ├── frame/          # KCP frame codec and statistics
+│   └── util/           # KCP configuration utilities
+├── websocket/          # WebSocket protocol implementation
+│   ├── server/         # WebSocket server with path routing
+│   ├── client/         # WebSocket client implementation
+│   ├── frame/          # WebSocket frame codec
+│   └── wsconn/         # WebSocket connection wrapper
 ├── xnet/               # Core network abstractions
-│   ├── session.go      # Session management
-│   ├── transport.go    # Transport layer
-│   ├── crypto.go       # AES-GCM encryption
+│   ├── session.go      # Session management with encryption
+│   ├── transport.go    # Multi-protocol transport layer
+│   ├── crypto.go       # AES-GCM encryption implementation
 │   ├── ecdh.go         # ECDH key exchange
-│   ├── service.go      # Service interface
-│   ├── tunnel.go       # Tunnel management
-│   └── worker.go       # Worker interface
-├── tunnel/             # Tunnel implementation
-├── xcontext/           # Context utilities
+│   ├── service.go      # Service interface definition
+│   ├── tunnel.go       # Application tunnel management
+│   ├── worker.go       # Worker interface
+│   └── network.go      # Network utilities
 ├── http/               # HTTP utilities
 │   └── health/         # Health check endpoints
-├── middleware/         # Middleware components
 ├── internal/           # Internal implementations
-│   ├── workermanager.go    # Worker manager
-│   ├── tunnelmanager.go    # Tunnel manager
-│   ├── worker.go           # Connection worker
-│   ├── bufpool/            # Buffer pool utilities
-│   ├── codec/              # Message encoding/decoding
-│   └── ip/                 # IP utilities
+│   ├── codec.go        # Codec interface
+│   ├── server.go       # Base server implementation
+│   ├── client.go       # Base client implementation
+│   ├── worker.go       # Connection worker
+│   ├── workermanager.go    # Worker pool manager
+│   ├── tunnelmanager.go    # Tunnel lifecycle manager
+│   ├── ringpool/       # Ring buffer pool utilities
+│   └── util/           # Internal utilities (IP, deadlines)
+├── server/             # Server options and configuration
+├── client/             # Client options and configuration
 ├── conf/               # Configuration management
 │   └── conf.go         # Configuration structures
 └── example/            # Example applications
-    └── tcp/            # TCP client/server examples
+    ├── tcp/            # TCP client/server examples
+    ├── kcp/            # KCP client/server examples
+    ├── websocket/      # WebSocket client/server examples
+    ├── message/        # Common message definitions
+    └── service/        # Example service implementations
 ```
 
 ## Integration with go-pantheon Components
@@ -340,8 +471,10 @@ Fabrica Net is designed to be imported by other go-pantheon components:
 
 ```go
 import (
-    // TCP server for Janus gateway
+    // Protocol servers for Janus gateway
     tcp "github.com/go-pantheon/fabrica-net/tcp/server"
+    kcp "github.com/go-pantheon/fabrica-net/kcp"
+    websocket "github.com/go-pantheon/fabrica-net/websocket"
 
     // Session management for user connections
     "github.com/go-pantheon/fabrica-net/xnet"
@@ -389,14 +522,20 @@ make lint
 The project includes comprehensive examples in the `example/` directory:
 
 ```bash
-# Build and run TCP server example
+# TCP examples
 cd example/tcp
-make build-server
-./bin/server
+make build-server && ./bin/server
+make build-client && ./bin/client
 
-# Build and run TCP client example
-make build-client
-./bin/client
+# KCP examples
+cd example/kcp
+make build-server && ./bin/server
+make build-client && ./bin/client
+
+# WebSocket examples
+cd example/websocket
+make build-server && ./bin/server
+make build-client && ./bin/client
 ```
 
 ### Adding New Protocols
@@ -430,4 +569,4 @@ When adding new network protocols:
 
 ## License
 
-This project is licensed under the terms specified in the LICENSE file.
+This project is licensed under the terms specified in the [LICENSE](LICENSE) file.

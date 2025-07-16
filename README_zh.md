@@ -12,22 +12,22 @@
 <a href="https://deepwiki.com/go-pantheon/fabrica-net"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 
-> **语言**: [English](README.md) | [中文](README_CN.md)
+> **语言**: [English](README.md) | [中文](README_zh.md)
 
 ## 关于 Fabrica Net
 
-Fabrica Net 是一个高性能、企业级网络库，专门为 [go-pantheon/janus](https://github.com/go-pantheon/janus) 网关服务设计。它为游戏服务器基础设施提供安全的多协议通信能力、先进的会话管理和实时监控功能。
+Fabrica Net 是一个高性能、企业级网络库，专为 [go-pantheon/janus](https://github.com/go-pantheon/janus) 网关服务设计。它为游戏服务器基础设施提供安全的多协议通信能力，配备高级会话管理和实时监控功能。
 
-更多信息请访问：[deepwiki/go-pantheon/fabrica-net](https://deepwiki.com/go-pantheon/fabrica-net)
+更多信息请查看：[deepwiki/go-pantheon/fabrica-net](https://deepwiki.com/go-pantheon/fabrica-net)
 
 ## 关于 go-pantheon 生态系统
 
-**go-pantheon** 是一个开箱即用的游戏服务器框架，基于 [go-kratos](https://github.com/go-kratos/kratos) 微服务架构提供高性能、高可用的游戏服务器集群解决方案。Fabrica Net 作为网络通信基础，支撑以下核心组件：
+**go-pantheon** 是一个开箱即用的游戏服务器框架，基于 [go-kratos](https://github.com/go-kratos/kratos) 微服务架构提供高性能、高可用的游戏服务器集群解决方案。Fabrica Net 作为网络通信基础，支持以下核心组件：
 
 - **Roma**: 游戏核心逻辑服务
-- **Janus**: 客户端连接处理和请求转发的网关服务
-- **Lares**: 用户认证和账户管理的账号服务
-- **Senate**: 提供运营接口的后台管理服务
+- **Janus**: 网关服务，负责客户端连接处理和请求转发
+- **Lares**: 账户服务，负责用户认证和账户管理
+- **Senate**: 后台管理服务，提供运营接口
 
 ### 核心特性
 
@@ -43,17 +43,45 @@ Fabrica Net 是一个高性能、企业级网络库，专门为 [go-pantheon/jan
 ## 网络协议
 
 ### TCP 服务器 (`tcp/server/`)
-高性能 TCP 服务器，支持连接池：
-- 多工作器架构处理并发连接
-- 可配置的缓冲区大小和保活设置
-- 带钩子的连接生命周期管理
-- 支持请求/响应过滤的中间件
+高性能 TCP 服务器，采用工作池架构：
+- Worker 支持非阻塞零拷贝处理并发连接
+- Worker 管理器采用 Bucket 连接存储
+- 可配置的缓冲区大小和 TCP 保活设置
+- 支持中间件的连接生命周期管理
+- 内置支持推送、组播和广播消息
 
 ### TCP 客户端 (`tcp/client/`)
-健壮的 TCP 客户端，支持自动重连：
-- 带会话管理的加密通信
-- 指数退避的重试机制
-- 连接状态跟踪和恢复
+基于对话管理的 TCP 客户端：
+- 每个客户端单连接，采用帧式通信
+- 基于会话的加密通信和握手协议
+- 对话抽象进行连接状态管理
+- 异步接收通道处理入站消息
+
+### KCP 服务器 (`kcp/server/`)
+高性能基于 UDP 的 KCP 服务器：
+- 使用 smux 在单个 UDP 会话上进行流多路复用
+- 前向纠错 (FEC) 支持以提高可靠性
+- 可配置的确认间隔和窗口大小
+- 针对低延迟、不可靠网络条件进行优化
+
+### KCP 客户端 (`kcp/client/`)
+具有可靠性特性的 KCP 客户端：
+- 自动 ARQ（自动重传请求）进行丢包恢复
+- 针对游戏优化的拥塞控制算法
+- 支持并发数据流的流多路复用
+
+### WebSocket 服务器 (`websocket/server/`)
+基于路径路由的 WebSocket 服务器：
+- 带可配置路径的 HTTP 升级处理
+- 与现有工作池架构集成
+- 支持文本和二进制 WebSocket 帧
+- 兼容标准 WebSocket 协议 (RFC 6455)
+
+### WebSocket 客户端 (`websocket/client/`)
+WebSocket 客户端实现：
+- 基于 Gorilla WebSocket 的实现
+- 消息帧和协议合规性
+- 与会话管理系统集成
 
 ### 网络抽象 (`xnet/`)
 核心网络抽象和工具：
@@ -64,18 +92,21 @@ Fabrica Net 是一个高性能、企业级网络库，专门为 [go-pantheon/jan
 
 ## 技术栈
 
-| 技术/组件           | 用途         | 版本    |
-| ------------------- | ------------ | ------- |
-| Go                  | 主要开发语言 | 1.24+   |
-| go-kratos           | 微服务框架   | v2.8.4  |
-| fabrica-util        | 通用工具库   | v0.0.20 |
-| Prometheus          | 指标和监控   | v1.22.0 |
-| gRPC                | 服务间通信   | v1.73.0 |
-| golang.org/x/crypto | 加密操作     | v0.39.0 |
+| 技术/组件           | 用途           | 版本    |
+| ------------------- | -------------- | ------- |
+| Go                  | 主要开发语言   | 1.24.4+ |
+| go-kratos           | 微服务框架     | v2.8.4  |
+| fabrica-util        | 通用工具库     | v0.0.35 |
+| Prometheus          | 指标与监控     | v1.22.0 |
+| gRPC                | 服务间通信     | v1.73.0 |
+| golang.org/x/crypto | 加密操作       | v0.40.0 |
+| gorilla/websocket   | WebSocket 实现 | v1.5.3  |
+| xtaci/kcp-go        | KCP 协议支持   | v5.6.22 |
+| xtaci/smux          | 流多路复用     | v1.5.34 |
 
-## 系统要求
+## 要求
 
-- Go 1.24+
+- Go 1.24.4+
 
 ## 快速开始
 
@@ -261,6 +292,89 @@ func main() {
 }
 ```
 
+### KCP 服务器示例
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/go-pantheon/fabrica-net/kcp"
+    "github.com/go-pantheon/fabrica-net/xnet"
+)
+
+func main() {
+    service := &GameService{} // 与 TCP 示例相同的服务实现
+
+    srv, err := kcp.NewServer(":8081", service)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    if err := srv.Start(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer srv.Stop(ctx)
+
+    // 等待中断信号
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+    <-c
+
+    log.Printf("KCP 服务器已停止")
+}
+```
+
+### WebSocket 服务器示例
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/go-pantheon/fabrica-net/websocket"
+    "github.com/go-pantheon/fabrica-net/xnet"
+)
+
+func main() {
+    service := &GameService{} // 与 TCP 示例相同的服务实现
+
+    // 创建带路径的 WebSocket 服务器
+    srv, err := websocket.NewServer(":8082", "/ws", service)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    if err := srv.Start(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer srv.Stop(ctx)
+
+    // 等待中断信号
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+    <-c
+
+    log.Printf("WebSocket 服务器已停止")
+}
+```
+
 ### 配置设置
 
 ```go
@@ -307,31 +421,49 @@ func main() {
 .
 ├── tcp/                # TCP 协议实现
 │   ├── server/         # 带工作池的 TCP 服务器
-│   └── client/         # 带自动重连的 TCP 客户端
+│   ├── client/         # 带自动重连的 TCP 客户端
+│   └── frame/          # TCP 帧编解码器
+├── kcp/                # KCP（基于 UDP）协议实现
+│   ├── server/         # 带 smux 多路复用的 KCP 服务器
+│   ├── client/         # KCP 客户端实现
+│   ├── frame/          # KCP 帧编解码器和统计
+│   └── util/           # KCP 配置工具
+├── websocket/          # WebSocket 协议实现
+│   ├── server/         # 带路径路由的 WebSocket 服务器
+│   ├── client/         # WebSocket 客户端实现
+│   ├── frame/          # WebSocket 帧编解码器
+│   └── wsconn/         # WebSocket 连接包装器
 ├── xnet/               # 核心网络抽象
-│   ├── session.go      # 会话管理
-│   ├── transport.go    # 传输层
-│   ├── crypto.go       # AES-GCM 加密
+│   ├── session.go      # 带加密的会话管理
+│   ├── transport.go    # 多协议传输层
+│   ├── crypto.go       # AES-GCM 加密实现
 │   ├── ecdh.go         # ECDH 密钥交换
-│   ├── service.go      # 服务接口
-│   ├── tunnel.go       # 隧道管理
-│   └── worker.go       # 工作器接口
-├── tunnel/             # 隧道实现
-├── xcontext/           # 上下文工具
+│   ├── service.go      # 服务接口定义
+│   ├── tunnel.go       # 应用隧道管理
+│   ├── worker.go       # 工作者接口
+│   └── network.go      # 网络工具
 ├── http/               # HTTP 工具
 │   └── health/         # 健康检查端点
-├── middleware/         # 中间件组件
 ├── internal/           # 内部实现
-│   ├── workermanager.go    # 工作器管理器
-│   ├── tunnelmanager.go    # 隧道管理器
-│   ├── worker.go           # 连接工作器
-│   ├── bufpool/            # 缓冲池工具
-│   ├── codec/              # 消息编码/解码
-│   └── ip/                 # IP 工具
+│   ├── codec.go        # 编解码器接口
+│   ├── server.go       # 基础服务器实现
+│   ├── client.go       # 基础客户端实现
+│   ├── worker.go       # 连接工作者
+│   ├── workermanager.go    # 工作池管理器
+│   ├── tunnelmanager.go    # 隧道生命周期管理器
+│   ├── ringpool/       # 环形缓冲池工具
+│   └── util/           # 内部工具（IP、截止时间）
+├── server/             # 服务器选项和配置
+├── client/             # 客户端选项和配置
+├── codec/              # 消息编码/解码
 ├── conf/               # 配置管理
 │   └── conf.go         # 配置结构
 └── example/            # 示例应用
-    └── tcp/            # TCP 客户端/服务器示例
+    ├── tcp/            # TCP 客户端/服务器示例
+    ├── kcp/            # KCP 客户端/服务器示例
+    ├── websocket/      # WebSocket 客户端/服务器示例
+    ├── message/        # 通用消息定义
+    └── service/        # 示例服务实现
 ```
 
 ## 与 go-pantheon 组件集成
@@ -340,8 +472,10 @@ Fabrica Net 专为其他 go-pantheon 组件导入而设计：
 
 ```go
 import (
-    // Janus 网关的 TCP 服务器
+    // Janus 网关的协议服务器
     tcp "github.com/go-pantheon/fabrica-net/tcp/server"
+    kcp "github.com/go-pantheon/fabrica-net/kcp"
+    websocket "github.com/go-pantheon/fabrica-net/websocket"
 
     // 用户连接的会话管理
     "github.com/go-pantheon/fabrica-net/xnet"
@@ -389,14 +523,20 @@ make lint
 项目在 `example/` 目录中包含全面的示例：
 
 ```bash
-# 构建并运行 TCP 服务器示例
+# TCP 示例
 cd example/tcp
-make build-server
-./bin/server
+make build-server && ./bin/server
+make build-client && ./bin/client
 
-# 构建并运行 TCP 客户端示例
-make build-client
-./bin/client
+# KCP 示例
+cd example/kcp
+make build-server && ./bin/server
+make build-client && ./bin/client
+
+# WebSocket 示例
+cd example/websocket
+make build-server && ./bin/server
+make build-client && ./bin/client
 ```
 
 ### 添加新协议
@@ -430,4 +570,4 @@ make build-client
 
 ## 许可证
 
-本项目基于 LICENSE 文件中指定的条款授权。
+本项目基于 [LICENSE](LICENSE) 文件中指定的条款授权。
