@@ -18,8 +18,8 @@ var _ xnet.ClientDialog = (*Dialog)(nil)
 type Dialog struct {
 	xsync.Stoppable
 
-	id       uint64
-	clientID int64
+	id    uint64
+	cliID int64
 
 	authFunc      client.AuthFunc
 	handshakePack client.HandshakePackFunc
@@ -36,7 +36,7 @@ func newDialog(id uint64, cid int64, handshakePack client.HandshakePackFunc, wra
 	return &Dialog{
 		Stoppable:        xsync.NewStopper(10 * time.Second),
 		id:               id,
-		clientID:         cid,
+		cliID:            cid,
 		authFunc:         authFunc,
 		handshakePack:    handshakePack,
 		authed:           make(chan struct{}),
@@ -74,7 +74,7 @@ func (d *Dialog) start(ctx context.Context) error {
 
 	close(d.authed)
 
-	log.Infof("[dialog] %d-%d started.", d.clientID, d.id)
+	log.Infof("[dialog] %d-%d started.", d.cliID, d.id)
 
 	return eg.Wait()
 }
@@ -89,7 +89,7 @@ func (d *Dialog) stop() (err error) {
 			}
 		}
 
-		log.Infof("[dialog] %d-%d stopped.", d.clientID, d.id)
+		log.Infof("[dialog] %d-%d stopped.", d.cliID, d.id)
 
 		return err
 	})
@@ -100,7 +100,7 @@ func (d *Dialog) handshake(ctx context.Context, pack xnet.Pack) (err error) {
 		return err
 	}
 
-	log.Infof("[SEND] auth %d %d %s", d.clientID, d.id, pack)
+	log.Debugf("[SEND] auth %d %d %s", d.cliID, d.id, pack)
 
 	pack, free, err := d.codec.Decode()
 	if err != nil {
@@ -113,6 +113,8 @@ func (d *Dialog) handshake(ctx context.Context, pack xnet.Pack) (err error) {
 	if err != nil {
 		return err
 	}
+
+	log.Debugf("[RECV] auth %d %d %s", d.cliID, d.id, pack)
 
 	return nil
 }

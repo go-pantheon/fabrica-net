@@ -17,10 +17,10 @@ import (
 type Smux struct {
 	xsync.Stoppable
 
-	id           int64
-	conn         *kcpgo.UDPSession
-	session      *smux.Session
-	widGenerator *internal.ConnIDGenerator
+	id        int64
+	conn      *kcpgo.UDPSession
+	session   *smux.Session
+	connIDGen *internal.ConnIDGenerator
 }
 
 func newSmux(id int64, conn *kcpgo.UDPSession, conf conf.KCP, widGen *internal.ConnIDGenerator) (*Smux, error) {
@@ -31,11 +31,11 @@ func newSmux(id int64, conn *kcpgo.UDPSession, conf conf.KCP, widGen *internal.C
 	}
 
 	return &Smux{
-		Stoppable:    xsync.NewStopper(10 * time.Second),
-		id:           id,
-		conn:         conn,
-		session:      session,
-		widGenerator: widGen,
+		Stoppable: xsync.NewStopper(10 * time.Second),
+		id:        id,
+		conn:      conn,
+		session:   session,
+		connIDGen: widGen,
 	}, nil
 }
 
@@ -52,7 +52,7 @@ func (s *Smux) start(ctx context.Context, streamChan chan internal.ConnWrapper) 
 				return errors.Wrapf(err, "accept stream failed")
 			}
 
-			streamChan <- internal.NewConnWrapper(s.widGenerator.Next(), stream, frame.New(stream))
+			streamChan <- internal.NewConnWrapper(s.connIDGen.Next(), stream, frame.New(stream))
 		}
 	}
 }

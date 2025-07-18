@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/go-pantheon/fabrica-net/client"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/internal/util"
 	"github.com/go-pantheon/fabrica-net/tcp/frame"
@@ -14,14 +15,14 @@ import (
 var _ internal.Dialer = (*dialer)(nil)
 
 type dialer struct {
-	bind string
-	id   int64
+	cliID int64
+	bind  string
 }
 
-func newDialer(id int64, bind string) *dialer {
+func newDialer(cliID int64, bind string) *dialer {
 	return &dialer{
-		bind: bind,
-		id:   id,
+		cliID: cliID,
+		bind:  bind,
 	}
 }
 
@@ -36,9 +37,9 @@ func (d *dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 		return nil, errors.Wrapf(err, "connect failed. addr=%s", target)
 	}
 
-	util.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", d.id))
+	util.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", d.cliID))
 
-	return []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, frame.New(conn))}, nil
+	return []internal.ConnWrapper{internal.NewConnWrapper(client.DialogID(d.cliID, 0), conn, frame.New(conn))}, nil
 }
 
 func (d *dialer) Stop(ctx context.Context) error {

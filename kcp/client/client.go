@@ -1,9 +1,6 @@
 package client
 
 import (
-	"context"
-
-	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-pantheon/fabrica-net/client"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/xnet"
@@ -33,18 +30,6 @@ func NewClient(id int64, target string, handshakePack client.HandshakePackFunc, 
 		BaseClient: baseClient,
 		target:     target,
 	}, nil
-}
-
-// Start starts the KCP client
-func (c *Client) Start(ctx context.Context) error {
-	log.Infof("[kcp.Client] connecting to %s smux=%t streamSize=%d", c.target, c.Conf().KCP.Smux, c.Conf().KCP.SmuxStreamSize)
-	return c.BaseClient.Start(ctx)
-}
-
-// Stop stops the KCP client
-func (c *Client) Stop(ctx context.Context) error {
-	log.Infof("[kcp.Client] stopping")
-	return c.BaseClient.Stop(ctx)
 }
 
 // Target returns the target address for interface consistency

@@ -30,8 +30,8 @@ type listener struct {
 	server   *http.Server
 	upgrader websocket.Upgrader
 
-	widGener *internal.ConnIDGenerator
-	connChan chan internal.ConnWrapper
+	connIDGen *internal.ConnIDGenerator
+	connChan  chan internal.ConnWrapper
 }
 
 func newListener(bind string, path string, conf conf.Config) *listener {
@@ -40,7 +40,7 @@ func newListener(bind string, path string, conf conf.Config) *listener {
 		bind:      bind,
 		path:      path,
 		conf:      conf,
-		widGener:  internal.NewConnIDGenerator(internal.NetTypeWebSocket),
+		connIDGen: internal.NewConnIDGenerator(internal.NetTypeWebSocket),
 		connChan:  make(chan internal.ConnWrapper, 1024),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  conf.WebSocket.ReadBufSize,
@@ -87,12 +87,11 @@ func (l *listener) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wid := l.widGener.Next()
 	wsConn := wsconn.NewWebSocketConn(conn)
 	codec := frame.New(wsConn)
 
 	select {
-	case l.connChan <- internal.NewConnWrapper(wid, wsConn, codec):
+	case l.connChan <- internal.NewConnWrapper(l.connIDGen.Next(), wsConn, codec):
 	default:
 		log.Error("[websocket.Listener] connection channel full, dropping connection")
 	}

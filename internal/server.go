@@ -89,11 +89,11 @@ func (s *BaseServer) accept(ctx context.Context) error {
 		return errors.Wrapf(err, "accept failed")
 	}
 
-	xsync.Go(fmt.Sprintf("BaseServer.serve-%d", conn.WID), func() error {
+	xsync.Go(fmt.Sprintf("BaseServer.serve-%d", conn.ID), func() error {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		return s.work(ctx, conn.WID, conn.Conn, conn.Codec)
+		return s.work(ctx, conn.ID, conn.Conn, conn.Codec)
 	})
 
 	return nil

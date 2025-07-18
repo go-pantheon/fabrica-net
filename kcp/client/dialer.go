@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-pantheon/fabrica-net/client"
 	"github.com/go-pantheon/fabrica-net/conf"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/kcp/frame"
@@ -18,7 +19,7 @@ import (
 var _ internal.Dialer = (*Dialer)(nil)
 
 type Dialer struct {
-	clientID   int64
+	cliID      int64
 	target     string
 	conf       conf.KCP
 	smux       *smux.Session
@@ -33,6 +34,7 @@ func NewDialer(id int64, target string, conf conf.KCP) (*Dialer, error) {
 	}
 
 	return &Dialer{
+		cliID:      id,
 		target:     target,
 		conf:       conf,
 		configurer: util.NewConnConfigurer(conf),
@@ -49,7 +51,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 	d.configurer.ConfigureConnection(conn)
 
 	if !d.conf.Smux {
-		return []internal.ConnWrapper{internal.NewConnWrapper(0, conn, frame.New(conn))}, nil
+		return []internal.ConnWrapper{internal.NewConnWrapper(client.DialogID(d.cliID, 0), conn, frame.New(conn))}, nil
 	}
 
 	session, err := smux.Client(conn, d.configurer.CreateSmuxConfig())
@@ -89,7 +91,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 			return nil, errors.Wrapf(streamErr, "create smux stream %d failed", i)
 		}
 
-		wrappers = append(wrappers, internal.NewConnWrapper(uint64(d.clientID*100+int64(i)), stream, frame.New(stream)))
+		wrappers = append(wrappers, internal.NewConnWrapper(client.DialogID(d.cliID, i), stream, frame.New(stream)))
 	}
 
 	return wrappers, nil

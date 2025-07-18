@@ -23,11 +23,11 @@ var _ internal.Listener = (*Listener)(nil)
 type Listener struct {
 	xsync.Stoppable
 
-	bind        string
-	conf        conf.KCP
-	listener    *kcpgo.Listener
-	connIdGener *internal.ConnIDGenerator
-	streamChan  chan internal.ConnWrapper
+	bind       string
+	conf       conf.KCP
+	listener   *kcpgo.Listener
+	connIDGen  *internal.ConnIDGenerator
+	streamChan chan internal.ConnWrapper
 
 	smuxIDGenerator *atomic.Int64
 	smuxSessions    *sync.Map
@@ -47,7 +47,7 @@ func newListener(bind string, conf conf.KCP) (*Listener, error) {
 		Stoppable:       xsync.NewStopper(10 * time.Second),
 		bind:            bind,
 		conf:            conf,
-		connIdGener:     internal.NewConnIDGenerator(internal.NetTypeKCP),
+		connIDGen:       internal.NewConnIDGenerator(internal.NetTypeKCP),
 		streamChan:      make(chan internal.ConnWrapper, 1024),
 		smuxIDGenerator: &atomic.Int64{},
 		smuxSessions:    &sync.Map{},
@@ -127,14 +127,14 @@ func (l *Listener) accept(ctx context.Context) error {
 		return l.startSmux(ctx, conn)
 	}
 
-	l.streamChan <- internal.NewConnWrapper(l.connIdGener.Next(), conn, frame.New(conn))
+	l.streamChan <- internal.NewConnWrapper(l.connIDGen.Next(), conn, frame.New(conn))
 	return nil
 }
 
 func (l *Listener) startSmux(ctx context.Context, conn *kcpgo.UDPSession) error {
 	id := l.smuxIDGenerator.Add(1)
 
-	smux, err := newSmux(id, conn, l.conf, l.connIdGener)
+	smux, err := newSmux(id, conn, l.conf, l.connIDGen)
 	if err != nil {
 		return errors.Wrapf(err, "new smux failed")
 	}

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/go-pantheon/fabrica-net/client"
 	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/websocket/frame"
 	"github.com/go-pantheon/fabrica-net/websocket/wsconn"
@@ -16,15 +17,15 @@ import (
 var _ internal.Dialer = (*Dialer)(nil)
 
 type Dialer struct {
-	id     int64
+	cliID  int64
 	url    string
 	dialer *websocket.Dialer
 	origin string
 }
 
-func newDialer(id int64, url string, origin string) *Dialer {
+func newDialer(cliID int64, url string, origin string) *Dialer {
 	return &Dialer{
-		id:     id,
+		cliID:  cliID,
 		url:    url,
 		origin: origin,
 		dialer: &websocket.Dialer{
@@ -60,7 +61,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 	conn := wsconn.NewWebSocketConn(c)
 	codec := frame.New(conn)
 
-	return []internal.ConnWrapper{internal.NewConnWrapper(uint64(d.id), conn, codec)}, nil
+	return []internal.ConnWrapper{internal.NewConnWrapper(client.DialogID(d.cliID, 0), conn, codec)}, nil
 }
 
 func (d *Dialer) Stop(ctx context.Context) error {

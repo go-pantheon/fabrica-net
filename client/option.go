@@ -58,3 +58,7 @@ func (o *Options) AuthFunc() AuthFunc {
 func (o *Options) Conf() conf.Config {
 	return o.conf
 }
+
+func DialogID(id int64, index int) uint64 {
+	return uint64(id)*100 + uint64(index)
+}

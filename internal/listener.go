@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"net"
 	"sync/atomic"
 )
 
@@ -27,28 +26,6 @@ type Listener interface {
 	Endpoint() (string, error)
 }
 
-type ConnWrapper struct {
-	WID   uint64
-	Conn  net.Conn
-	Codec Codec
-}
-
-func NewConnWrapper(wid uint64, conn net.Conn, codec Codec) ConnWrapper {
-	return ConnWrapper{
-		WID:   wid,
-		Conn:  conn,
-		Codec: codec,
-	}
-}
-
-func (c ConnWrapper) Close() error {
-	if c.Codec == nil {
-		return nil
-	}
-
-	return c.Conn.Close()
-}
-
 type ConnIDGenerator struct {
 	counter *atomic.Uint64
 	netType int
@@ -61,6 +38,6 @@ func NewConnIDGenerator(netType int) *ConnIDGenerator {
 	}
 }
 
-func (w *ConnIDGenerator) Next() uint64 {
-	return w.counter.Add(1)<<4 | uint64(w.netType)
+func (g *ConnIDGenerator) Next() uint64 {
+	return g.counter.Add(1)<<4 | uint64(g.netType)
 }

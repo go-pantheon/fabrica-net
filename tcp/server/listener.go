@@ -14,17 +14,17 @@ import (
 var _ internal.Listener = (*Listener)(nil)
 
 type Listener struct {
-	bind     string
-	conf     conf.TCP
-	listener *net.TCPListener
-	widGener *internal.ConnIDGenerator
+	bind      string
+	conf      conf.TCP
+	listener  *net.TCPListener
+	connIDGen *internal.ConnIDGenerator
 }
 
 func newListener(bind string, conf conf.TCP) *Listener {
 	return &Listener{
-		bind:     bind,
-		conf:     conf,
-		widGener: internal.NewConnIDGenerator(internal.NetTypeTCP),
+		bind:      bind,
+		conf:      conf,
+		connIDGen: internal.NewConnIDGenerator(internal.NetTypeTCP),
 	}
 }
 
@@ -71,7 +71,7 @@ func (l *Listener) Accept(ctx context.Context) (wrapper internal.ConnWrapper, er
 		return internal.ConnWrapper{}, errors.Wrapf(err, "configure connection failed")
 	}
 
-	return internal.NewConnWrapper(l.widGener.Next(), conn, frame.New(conn)), nil
+	return internal.NewConnWrapper(l.connIDGen.Next(), conn, frame.New(conn)), nil
 }
 
 func (l *Listener) configure(conn net.Conn) error {

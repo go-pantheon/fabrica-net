@@ -48,13 +48,13 @@ func (c *BaseClient) Start(ctx context.Context) (err error) {
 	}
 
 	for _, wrapper := range wrappers {
-		d := newDialog(wrapper.WID, c.Id, c.handshakePack, wrapper, c.AuthFunc())
-		c.dialogMap.Store(wrapper.WID, d)
+		d := newDialog(wrapper.ID, c.Id, c.handshakePack, wrapper, c.AuthFunc())
+		c.dialogMap.Store(wrapper.ID, d)
 
-		d.GoAndStop(fmt.Sprintf("client.receive.id-%d-%d", d.clientID, d.id), func() error {
+		d.GoAndStop(fmt.Sprintf("client.receive.id-%d-%d", d.cliID, d.id), func() error {
 			return d.start(ctx)
 		}, func() error {
-			c.dialogMap.Delete(wrapper.WID)
+			c.dialogMap.Delete(wrapper.ID)
 			return d.stop()
 		})
 	}
@@ -110,18 +110,14 @@ func (c *BaseClient) WalkDialogs(fn func(dialog xnet.ClientDialog)) {
 	})
 }
 
-func (c *BaseClient) Dialog(dialogID uint64) xnet.ClientDialog {
+func (c *BaseClient) Dialog(dialogID uint64) (xnet.ClientDialog, bool) {
 	if dialog, ok := c.dialogMap.Load(dialogID); ok {
-		return dialog.(*Dialog)
-	}
-
-	return nil
-}
-
-func (c *BaseClient) DefaultDialog() (xnet.ClientDialog, bool) {
-	if dialog, ok := c.dialogMap.Load(0); ok {
 		return dialog.(*Dialog), true
 	}
 
 	return nil, false
+}
+
+func (c *BaseClient) DefaultDialog() (xnet.ClientDialog, bool) {
+	return c.Dialog(client.DialogID(c.Id, 0))
 }

@@ -99,8 +99,6 @@ func authFunc(ctx context.Context, pack xnet.Pack) (xnet.Session, error) {
 		return nil, errors.Wrap(err, "unmarshal auth pack failed")
 	}
 
-	log.Infof("[RECV] %d auth %s", authMsg.ConnID, authMsg)
-
 	return xnet.DefaultSession(), nil
 }
 
