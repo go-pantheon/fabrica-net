@@ -1,14 +1,18 @@
 package internal
 
-import "net"
+import (
+	"net"
+
+	"github.com/go-pantheon/fabrica-net/xnet"
+)
 
 type ConnCarrier struct {
 	ID    uint64
 	Conn  net.Conn
-	Codec Codec
+	Codec xnet.Codec
 }
 
-func NewConnCarrier(id uint64, conn net.Conn, codec Codec) ConnCarrier {
+func NewConnCarrier(id uint64, conn net.Conn, codec xnet.Codec) ConnCarrier {
 	return ConnCarrier{
 		ID:    id,
 		Conn:  conn,

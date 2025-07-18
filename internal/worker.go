@@ -25,7 +25,7 @@ type Worker struct {
 
 	id        uint64
 	conn      net.Conn
-	codec     Codec
+	codec     xnet.Codec
 	connected atomic.Bool
 	session   xnet.Session
 
@@ -43,7 +43,7 @@ type Worker struct {
 }
 
 func newWorker(wid uint64, conn net.Conn, conf conf.Worker, referer string,
-	codec Codec, readFilter, writeFilter middleware.Middleware, svc xnet.Service,
+	codec xnet.Codec, readFilter, writeFilter middleware.Middleware, svc xnet.Service,
 ) *Worker {
 	w := &Worker{
 		Stoppable:     xsync.NewStopper(conf.StopTimeout),

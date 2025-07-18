@@ -5,7 +5,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/internal/ringpool"
 	"github.com/go-pantheon/fabrica-net/websocket/wsconn"
 	"github.com/go-pantheon/fabrica-net/xnet"
@@ -42,13 +41,13 @@ func InitWebSocketRingPool(sizeCapacityMap map[int]uint64) (err error) {
 	return nil
 }
 
-var _ internal.Codec = (*Codec)(nil)
+var _ xnet.Codec = (*Codec)(nil)
 
 type Codec struct {
 	conn *wsconn.WebSocketConn
 }
 
-func New(conn *wsconn.WebSocketConn) internal.Codec {
+func New(conn *wsconn.WebSocketConn) xnet.Codec {
 	return &Codec{
 		conn: conn,
 	}

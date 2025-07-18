@@ -27,7 +27,7 @@ type Dialog struct {
 	session       xnet.Session
 
 	conn  net.Conn
-	codec Codec
+	codec xnet.Codec
 
 	receivedPackChan chan xnet.Pack
 }

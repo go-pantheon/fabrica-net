@@ -7,7 +7,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/go-pantheon/fabrica-net/internal"
 	"github.com/go-pantheon/fabrica-net/internal/ringpool"
 	"github.com/go-pantheon/fabrica-net/xnet"
 	"github.com/go-pantheon/fabrica-util/errors"
@@ -42,14 +41,14 @@ func InitTcpRingPool(sizeCapacityMap map[int]uint64) (err error) {
 	return nil
 }
 
-var _ internal.Codec = (*Codec)(nil)
+var _ xnet.Codec = (*Codec)(nil)
 
 type Codec struct {
 	w *bufio.Writer
 	r *bufio.Reader
 }
 
-func New(conn net.Conn) internal.Codec {
+func New(conn net.Conn) xnet.Codec {
 	return &Codec{
 		w: bufio.NewWriter(conn),
 		r: bufio.NewReader(conn),

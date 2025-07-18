@@ -99,7 +99,7 @@ func (s *BaseServer) accept(ctx context.Context) error {
 	return nil
 }
 
-func (s *BaseServer) work(ctx context.Context, wid uint64, conn net.Conn, codec Codec) (err error) {
+func (s *BaseServer) work(ctx context.Context, wid uint64, conn net.Conn, codec xnet.Codec) (err error) {
 	w := newWorker(wid, conn, s.Conf().Worker, s.Referer(), codec,
 		s.ReadFilter(), s.WriteFilter(), s.service)
 
