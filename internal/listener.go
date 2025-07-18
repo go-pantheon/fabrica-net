@@ -20,7 +20,7 @@ type Listener interface {
 	Stop(ctx context.Context) error
 
 	// Accept accepts a new connection and returns it as net.Conn
-	Accept(ctx context.Context) (ConnWrapper, error)
+	Accept(ctx context.Context) (ConnCarrier, error)
 
 	// Endpoint returns the endpoint URL for this listener
 	Endpoint() (string, error)

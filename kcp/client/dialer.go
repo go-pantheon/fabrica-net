@@ -42,7 +42,7 @@ func NewDialer(id int64, target string, conf conf.KCP) (*Dialer, error) {
 	}, nil
 }
 
-func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrapper, error) {
+func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnCarrier, error) {
 	conn, err := d.dial(ctx, target, time.Second*10)
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 	d.configurer.ConfigureConnection(conn)
 
 	if !d.conf.Smux {
-		return []internal.ConnWrapper{internal.NewConnWrapper(client.DialogID(d.cliID, 0), conn, frame.New(conn))}, nil
+		return []internal.ConnCarrier{internal.NewConnCarrier(client.DialogID(d.cliID, 0), conn, frame.New(conn))}, nil
 	}
 
 	session, err := smux.Client(conn, d.configurer.CreateSmuxConfig())
@@ -65,14 +65,14 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 
 	d.smux = session
 
-	wrappers := make([]internal.ConnWrapper, 0, d.conf.SmuxStreamSize)
+	carriers := make([]internal.ConnCarrier, 0, d.conf.SmuxStreamSize)
 
 	defer func() {
 		if err == nil {
 			return
 		}
 
-		for _, wrapper := range wrappers {
+		for _, wrapper := range carriers {
 			if closeErr := wrapper.Close(); closeErr != nil {
 				err = errors.JoinUnsimilar(err, errors.Wrapf(closeErr, "close stream during cleanup failed"))
 			}
@@ -91,10 +91,10 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 			return nil, errors.Wrapf(streamErr, "create smux stream %d failed", i)
 		}
 
-		wrappers = append(wrappers, internal.NewConnWrapper(client.DialogID(d.cliID, i), stream, frame.New(stream)))
+		carriers = append(carriers, internal.NewConnCarrier(client.DialogID(d.cliID, i), stream, frame.New(stream)))
 	}
 
-	return wrappers, nil
+	return carriers, nil
 }
 
 func (d *Dialer) dial(ctx context.Context, target string, timeout time.Duration) (conn *kcpgo.UDPSession, err error) {

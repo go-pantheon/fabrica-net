@@ -27,7 +27,7 @@ type Listener struct {
 	conf       conf.KCP
 	listener   *kcpgo.Listener
 	connIDGen  *internal.ConnIDGenerator
-	streamChan chan internal.ConnWrapper
+	streamChan chan internal.ConnCarrier
 
 	smuxIDGenerator *atomic.Int64
 	smuxSessions    *sync.Map
@@ -48,7 +48,7 @@ func newListener(bind string, conf conf.KCP) (*Listener, error) {
 		bind:            bind,
 		conf:            conf,
 		connIDGen:       internal.NewConnIDGenerator(internal.NetTypeKCP),
-		streamChan:      make(chan internal.ConnWrapper, 1024),
+		streamChan:      make(chan internal.ConnCarrier, 1024),
 		smuxIDGenerator: &atomic.Int64{},
 		smuxSessions:    &sync.Map{},
 		configurer:      util.NewConnConfigurer(conf),
@@ -87,13 +87,13 @@ func (l *Listener) Start(ctx context.Context) error {
 	return nil
 }
 
-func (l *Listener) Accept(ctx context.Context) (internal.ConnWrapper, error) {
+func (l *Listener) Accept(ctx context.Context) (internal.ConnCarrier, error) {
 	for {
 		select {
 		case <-l.StopTriggered():
-			return internal.ConnWrapper{}, xsync.ErrStopByTrigger
+			return internal.ConnCarrier{}, xsync.ErrStopByTrigger
 		case <-ctx.Done():
-			return internal.ConnWrapper{}, ctx.Err()
+			return internal.ConnCarrier{}, ctx.Err()
 		case conn := <-l.streamChan:
 			return conn, nil
 		}
@@ -127,7 +127,7 @@ func (l *Listener) accept(ctx context.Context) error {
 		return l.startSmux(ctx, conn)
 	}
 
-	l.streamChan <- internal.NewConnWrapper(l.connIDGen.Next(), conn, frame.New(conn))
+	l.streamChan <- internal.NewConnCarrier(l.connIDGen.Next(), conn, frame.New(conn))
 	return nil
 }
 

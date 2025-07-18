@@ -2,21 +2,21 @@ package internal
 
 import "net"
 
-type ConnWrapper struct {
+type ConnCarrier struct {
 	ID    uint64
 	Conn  net.Conn
 	Codec Codec
 }
 
-func NewConnWrapper(id uint64, conn net.Conn, codec Codec) ConnWrapper {
-	return ConnWrapper{
+func NewConnCarrier(id uint64, conn net.Conn, codec Codec) ConnCarrier {
+	return ConnCarrier{
 		ID:    id,
 		Conn:  conn,
 		Codec: codec,
 	}
 }
 
-func (c ConnWrapper) Close() error {
+func (c ConnCarrier) Close() error {
 	if c.Codec == nil {
 		return nil
 	}

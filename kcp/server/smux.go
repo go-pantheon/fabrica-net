@@ -39,7 +39,7 @@ func newSmux(id int64, conn *kcpgo.UDPSession, conf conf.KCP, widGen *internal.C
 	}, nil
 }
 
-func (s *Smux) start(ctx context.Context, streamChan chan internal.ConnWrapper) error {
+func (s *Smux) start(ctx context.Context, streamChan chan internal.ConnCarrier) error {
 	for {
 		select {
 		case <-s.StopTriggered():
@@ -52,7 +52,7 @@ func (s *Smux) start(ctx context.Context, streamChan chan internal.ConnWrapper) 
 				return errors.Wrapf(err, "accept stream failed")
 			}
 
-			streamChan <- internal.NewConnWrapper(s.connIDGen.Next(), stream, frame.New(stream))
+			streamChan <- internal.NewConnCarrier(s.connIDGen.Next(), stream, frame.New(stream))
 		}
 	}
 }

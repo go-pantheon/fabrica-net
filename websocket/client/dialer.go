@@ -36,7 +36,7 @@ func newDialer(cliID int64, url string, origin string) *Dialer {
 	}
 }
 
-func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrapper, error) {
+func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnCarrier, error) {
 	u, err := url.Parse(target)
 	if err != nil {
 		return nil, errors.Wrapf(err, "parse url failed. url=%s", target)
@@ -61,7 +61,7 @@ func (d *Dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 	conn := wsconn.NewWebSocketConn(c)
 	codec := frame.New(conn)
 
-	return []internal.ConnWrapper{internal.NewConnWrapper(client.DialogID(d.cliID, 0), conn, codec)}, nil
+	return []internal.ConnCarrier{internal.NewConnCarrier(client.DialogID(d.cliID, 0), conn, codec)}, nil
 }
 
 func (d *Dialer) Stop(ctx context.Context) error {

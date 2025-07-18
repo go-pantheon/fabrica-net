@@ -53,10 +53,10 @@ func (l *Listener) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (l *Listener) Accept(ctx context.Context) (wrapper internal.ConnWrapper, err error) {
+func (l *Listener) Accept(ctx context.Context) (carrier internal.ConnCarrier, err error) {
 	conn, err := l.listener.AcceptTCP()
 	if err != nil {
-		return internal.ConnWrapper{}, errors.Wrapf(err, "accept failed")
+		return internal.ConnCarrier{}, errors.Wrapf(err, "accept failed")
 	}
 
 	defer func() {
@@ -68,10 +68,10 @@ func (l *Listener) Accept(ctx context.Context) (wrapper internal.ConnWrapper, er
 	}()
 
 	if err := l.configure(conn); err != nil {
-		return internal.ConnWrapper{}, errors.Wrapf(err, "configure connection failed")
+		return internal.ConnCarrier{}, errors.Wrapf(err, "configure connection failed")
 	}
 
-	return internal.NewConnWrapper(l.connIDGen.Next(), conn, frame.New(conn)), nil
+	return internal.NewConnCarrier(l.connIDGen.Next(), conn, frame.New(conn)), nil
 }
 
 func (l *Listener) configure(conn net.Conn) error {

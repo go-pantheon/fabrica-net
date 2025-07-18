@@ -26,7 +26,7 @@ func newDialer(cliID int64, bind string) *dialer {
 	}
 }
 
-func (d *dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrapper, error) {
+func (d *dialer) Dial(ctx context.Context, target string) ([]internal.ConnCarrier, error) {
 	addr, err := net.ResolveTCPAddr("tcp", target)
 	if err != nil {
 		return nil, errors.Wrapf(err, "resolve addr failed. addr=%s", target)
@@ -39,7 +39,7 @@ func (d *dialer) Dial(ctx context.Context, target string) ([]internal.ConnWrappe
 
 	util.SetDeadlineWithContext(ctx, conn, fmt.Sprintf("client=%d", d.cliID))
 
-	return []internal.ConnWrapper{internal.NewConnWrapper(client.DialogID(d.cliID, 0), conn, frame.New(conn))}, nil
+	return []internal.ConnCarrier{internal.NewConnCarrier(client.DialogID(d.cliID, 0), conn, frame.New(conn))}, nil
 }
 
 func (d *dialer) Stop(ctx context.Context) error {

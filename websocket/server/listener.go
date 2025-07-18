@@ -31,7 +31,7 @@ type listener struct {
 	upgrader websocket.Upgrader
 
 	connIDGen *internal.ConnIDGenerator
-	connChan  chan internal.ConnWrapper
+	connChan  chan internal.ConnCarrier
 }
 
 func newListener(bind string, path string, conf conf.Config) *listener {
@@ -41,7 +41,7 @@ func newListener(bind string, path string, conf conf.Config) *listener {
 		path:      path,
 		conf:      conf,
 		connIDGen: internal.NewConnIDGenerator(internal.NetTypeWebSocket),
-		connChan:  make(chan internal.ConnWrapper, 1024),
+		connChan:  make(chan internal.ConnCarrier, 1024),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  conf.WebSocket.ReadBufSize,
 			WriteBufferSize: conf.WebSocket.WriteBufSize,
@@ -91,7 +91,7 @@ func (l *listener) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	codec := frame.New(wsConn)
 
 	select {
-	case l.connChan <- internal.NewConnWrapper(l.connIDGen.Next(), wsConn, codec):
+	case l.connChan <- internal.NewConnCarrier(l.connIDGen.Next(), wsConn, codec):
 	default:
 		log.Error("[websocket.Listener] connection channel full, dropping connection")
 	}
@@ -115,10 +115,10 @@ func (l *listener) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (l *listener) Accept(ctx context.Context) (internal.ConnWrapper, error) {
+func (l *listener) Accept(ctx context.Context) (internal.ConnCarrier, error) {
 	select {
 	case <-ctx.Done():
-		return internal.ConnWrapper{}, ctx.Err()
+		return internal.ConnCarrier{}, ctx.Err()
 	case wrapper := <-l.connChan:
 		return wrapper, nil
 	}

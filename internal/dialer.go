@@ -5,7 +5,7 @@ import "context"
 // Dialer defines the interface for protocol-specific connection dialing
 type Dialer interface {
 	// Dial establishes a connection to the target
-	Dial(ctx context.Context, target string) (conns []ConnWrapper, err error)
+	Dial(ctx context.Context, target string) (conns []ConnCarrier, err error)
 
 	// Stop stops the dialer
 	Stop(ctx context.Context) error
