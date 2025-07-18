@@ -67,7 +67,7 @@ func (c *BaseClient) Start(ctx context.Context) (err error) {
 func (c *BaseClient) Stop(ctx context.Context) (err error) {
 	var (
 		wg      sync.WaitGroup
-		safeErr = &errors.SafeJoinError{}
+		safeErr = errors.NewSafeJoinError()
 	)
 
 	c.dialogMap.Range(func(key, value any) bool {
@@ -86,7 +86,7 @@ func (c *BaseClient) Stop(ctx context.Context) (err error) {
 
 	wg.Wait()
 
-	if safeErr.Error() != "" {
+	if safeErr.HasError() {
 		err = errors.Join(err, safeErr)
 	}
 

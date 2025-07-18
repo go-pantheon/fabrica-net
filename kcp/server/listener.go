@@ -155,7 +155,7 @@ func (l *Listener) Stop(ctx context.Context) (err error) {
 	return l.TurnOff(func() error {
 		var (
 			wg      sync.WaitGroup
-			safeErr = &errors.SafeJoinError{}
+			safeErr = errors.NewSafeJoinError()
 		)
 
 		l.smuxSessions.Range(func(key, value any) bool {
@@ -174,7 +174,7 @@ func (l *Listener) Stop(ctx context.Context) (err error) {
 
 		wg.Wait()
 
-		if safeErr.Error() != "" {
+		if safeErr.HasError() {
 			err = errors.Join(err, safeErr)
 		}
 
