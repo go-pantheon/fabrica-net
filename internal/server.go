@@ -220,7 +220,7 @@ func (s *BaseServer) Push(ctx context.Context, uid int64, pack xnet.Pack) error 
 
 	w := s.workerManager.GetByUID(uid)
 	if w == nil {
-		return errors.New("worker not found")
+		return xnet.ErrWorkerNotFound
 	}
 
 	return w.Push(ctx, pack)
@@ -245,7 +245,7 @@ func (s *BaseServer) Multicast(ctx context.Context, uids []int64, pack xnet.Pack
 	return nil
 }
 
-func (s *BaseServer) Broadcast(ctx context.Context, pack xnet.Pack) (err error) {
+func (s *BaseServer) Broadcast(ctx context.Context, color string, sid int64, pack xnet.Pack) (err error) {
 	if s.OnStopping() {
 		return xsync.ErrIsStopped
 	}
@@ -255,6 +255,10 @@ func (s *BaseServer) Broadcast(ctx context.Context, pack xnet.Pack) (err error) 
 	}
 
 	s.workerManager.Walk(func(w *Worker) bool {
+		if w.Session().Color() != color || w.Session().SID() != sid {
+			return true
+		}
+
 		if pusherr := w.Push(ctx, pack); pusherr != nil {
 			err = errors.JoinUnsimilar(err, pusherr)
 		}
