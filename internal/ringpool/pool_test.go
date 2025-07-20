@@ -1,6 +1,9 @@
 package ringpool
 
 import (
+	"encoding/binary"
+	"fmt"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -89,57 +92,80 @@ func TestRingBufferPoolExhaustion(t *testing.T) {
 func TestRingBufferPoolConcurrent(t *testing.T) {
 	t.Parallel()
 
-	pool, err := NewRingBufferPool(1024, 256)
+	pool, err := NewRingBufferPool(1024, 1024)
 	require.NoError(t, err)
 
 	const (
-		goroutines = 20
-		iterations = 100
+		goroutines = 512
+		iterations = 1000
 	)
 
-	var wg sync.WaitGroup
+	var (
+		wg1 sync.WaitGroup
+		wg2 sync.WaitGroup
+	)
 
+	usedInts := make([]byte, goroutines*iterations)
 	bufChan := make(chan []byte, goroutines*iterations)
 	errors := make(chan error, goroutines)
 
-	wg.Add(goroutines)
-
 	for i := range goroutines {
+		wg1.Add(1)
+
 		go func(id int) {
-			defer wg.Done()
+			defer wg1.Done()
 
 			for j := range iterations {
 				buf := pool.Alloc(512)
 				if len(buf) != 512 {
-					errors <- assert.AnError
+					errors <- fmt.Errorf("buffer length is not 512. %d", len(buf))
 					return
 				}
 
-				buf[0] = byte(id + j)
+				require.Equal(t, uint64(0), binary.BigEndian.Uint64(buf))
 
-				pool.Free(buf)
+				binary.BigEndian.PutUint64(buf, uint64(id*1000+j))
+
+				time.Sleep(time.Microsecond * time.Duration(100+rand.IntN(1000)))
+
+				bufChan <- buf
 			}
 		}(i)
 	}
 
-	consumeCloseChan := make(chan struct{})
-	go func() {
-		for buf := range bufChan {
-			assert.True(t, buf[0] > 0)
-			pool.Free(buf)
-		}
+	for range goroutines {
+		wg2.Add(1)
 
-		close(consumeCloseChan)
-	}()
+		go func() {
+			defer wg2.Done()
 
-	wg.Wait()
+			for buf := range bufChan {
+				i := int(binary.BigEndian.Uint64(buf))
+				if usedInts[i] != 0 {
+					errors <- fmt.Errorf("duplicate int %d", i)
+					return
+				}
+
+				usedInts[i] = 1
+
+				pool.Free(buf)
+			}
+		}()
+	}
+
+	wg1.Wait()
 	close(errors)
 	close(bufChan)
-	<-consumeCloseChan
+
+	wg2.Wait()
 
 	// Check for errors
 	for err := range errors {
-		require.NoError(t, err)
+		require.NoError(t, err, "error in errors channel. %+v", err)
+	}
+
+	for i := range usedInts {
+		require.Equal(t, byte(1), usedInts[i])
 	}
 
 	stats := pool.Stats()
@@ -177,59 +203,6 @@ func TestRingBufferPoolStats(t *testing.T) {
 
 	// Clean up
 	pool.Free(buf2)
-}
-
-func BenchmarkRingBufferPool(b *testing.B) {
-	pool, _ := NewRingBufferPool(1024, 256)
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			buf := pool.Alloc(512)
-			pool.Free(buf)
-		}
-	})
-}
-
-func BenchmarkRingBufferPoolVsStdAlloc(b *testing.B) {
-	pool, _ := NewRingBufferPool(1024, 256)
-
-	b.Run("RingPool", func(b *testing.B) {
-		b.ResetTimer()
-
-		for range b.N {
-			buf := pool.Alloc(512)
-			pool.Free(buf)
-		}
-	})
-
-	b.Run("StdAlloc", func(b *testing.B) {
-		b.ResetTimer()
-
-		for range b.N {
-			buf := make([]byte, 512)
-			_ = buf
-		}
-	})
-}
-
-func BenchmarkConcurrentRingBufferPool(b *testing.B) {
-	pool, _ := NewRingBufferPool(1024, 1024)
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			buf := pool.Alloc(512)
-			// Simulate some work
-			for i := range 10 {
-				if i < len(buf) {
-					buf[i] = byte(i)
-				}
-			}
-
-			pool.Free(buf)
-		}
-	})
 }
 
 func TestRingBufferPoolMemoryReuse(t *testing.T) {
@@ -303,4 +276,59 @@ func TestRingBufferPoolUnderLoad(t *testing.T) {
 	// Should have processed many allocations
 	assert.Greater(t, totalAllocs.Load(), uint64(1000))
 	assert.Equal(t, stats.AllocCount, stats.FreeCount)
+}
+
+func BenchmarkRingBufferPool(b *testing.B) {
+	pool, _ := NewRingBufferPool(1024, 256)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			buf := pool.Alloc(512)
+			pool.Free(buf)
+		}
+	})
+
+	b.Logf("stats: %+v", pool.Stats())
+}
+
+func BenchmarkRingBufferPoolVsStdAlloc(b *testing.B) {
+	pool, _ := NewRingBufferPool(1024, 256)
+
+	b.Run("RingPool", func(b *testing.B) {
+		b.ResetTimer()
+
+		for range b.N {
+			buf := pool.Alloc(512)
+			pool.Free(buf)
+		}
+	})
+
+	b.Run("StdAlloc", func(b *testing.B) {
+		b.ResetTimer()
+
+		for range b.N {
+			buf := make([]byte, 512)
+			_ = buf
+		}
+	})
+}
+
+func BenchmarkConcurrentRingBufferPool(b *testing.B) {
+	pool, _ := NewRingBufferPool(1024, 1024)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			buf := pool.Alloc(512)
+			// Simulate some work
+			for i := range 10 {
+				if i < len(buf) {
+					buf[i] = byte(i)
+				}
+			}
+
+			pool.Free(buf)
+		}
+	})
 }

@@ -25,22 +25,21 @@ type Pool interface {
 var _ Pool = (*RingBufferPool)(nil)
 
 // RingBufferPool implements a lock-free ring buffer pool for high-performance buffer allocation
-// Optimized for high-frequency, low-latency scenarios with millions of connections
 type RingBufferPool struct {
-	// Ring buffer storage
 	buffers [][]byte
-	mask    uint64 // capacity - 1, for fast modulo using bitwise AND
+	mask    uint64
 
-	// Atomic counters for lock-free operations
 	head atomic.Uint64 // next allocation position
 	tail atomic.Uint64 // next free position
 
-	// Configuration
-	bufferSize int    // size of each buffer
+	// Per-slot state tracking for lock-free coordination (LMAX Disruptor pattern)
+	slotStates []atomic.Uint32 // 0 = available, 1 = allocated
+
+	bufferSize int
 	capacity   uint64 // total number of buffers (must be power of 2)
 
-	// Exact address tracking for reliable ring buffer detection
-	bufferAddrs map[uintptr]bool // Address set for all ring sizes
+	// Buffer address to index mapping for O(1) lookups
+	bufferAddrs map[uintptr]uint64
 
 	// Fallback for when ring is exhausted
 	fallbackPool sync.Pool
@@ -64,21 +63,19 @@ func NewRingBufferPool(bufferSize int, capacity uint64) (*RingBufferPool, error)
 	}
 
 	pool := &RingBufferPool{
-		buffers:    make([][]byte, capacity),
-		mask:       capacity - 1,
-		bufferSize: bufferSize,
-		capacity:   capacity,
+		buffers:     make([][]byte, capacity),
+		slotStates:  make([]atomic.Uint32, capacity),
+		bufferAddrs: make(map[uintptr]uint64, capacity),
+		mask:        capacity - 1,
+		bufferSize:  bufferSize,
+		capacity:    capacity,
 	}
 
-	// Always use exact address tracking for reliability
-	// Performance difference between map and linear search is negligible for practical ring sizes
-	pool.bufferAddrs = make(map[uintptr]bool, capacity)
-
-	// Pre-allocate all buffers and record their exact addresses
+	// Pre-allocate all buffers and map their addresses to indices
 	for i := range capacity {
 		pool.buffers[i] = make([]byte, bufferSize)
-		bufAddr := uintptr(unsafe.Pointer(&pool.buffers[i][0])) // #nosec G103
-		pool.bufferAddrs[bufAddr] = true
+		bufAddr := uintptr(unsafe.Pointer(unsafe.SliceData(pool.buffers[i]))) // #nosec G103
+		pool.bufferAddrs[bufAddr] = i
 	}
 
 	pool.fallbackPool.New = func() any {
@@ -118,18 +115,14 @@ func (p *RingBufferPool) Alloc(size int) []byte {
 		if p.head.CompareAndSwap(head, head+1) {
 			index := head & p.mask
 
-			buf := p.buffers[index]
+			if p.slotStates[index].CompareAndSwap(0, 1) {
+				buf := p.buffers[index]
+				return buf[:size]
+			}
 
-			return buf[:size]
+			// Slot was not available, handle it gracefully by retrying
+			continue
 		}
-	}
-}
-
-// clearBuffer securely zeros out buffer contents
-func (p *RingBufferPool) clearBuffer(buf []byte) {
-	if cap(buf) > 0 {
-		fullBuf := buf[:cap(buf)]
-		clear(fullBuf)
 	}
 }
 
@@ -137,9 +130,14 @@ func (p *RingBufferPool) clearBuffer(buf []byte) {
 func (p *RingBufferPool) Free(buf []byte) {
 	p.freeCount.Add(1)
 
-	// Check if this buffer belongs to our ring
 	if p.isRingBuffer(buf) {
 		p.clearBuffer(buf)
+
+		bufAddr := uintptr(unsafe.Pointer(unsafe.SliceData(buf))) // #nosec G103
+		if index, exists := p.bufferAddrs[bufAddr]; exists {
+			p.slotStates[index].Store(0)
+		}
+
 		p.tail.Add(1)
 
 		return
@@ -153,15 +151,25 @@ func (p *RingBufferPool) Free(buf []byte) {
 	}
 }
 
-// isRingBuffer checks if a buffer belongs to our pre-allocated ring - reliable exact address matching
+// clearBuffer securely zeros out buffer contents
+func (p *RingBufferPool) clearBuffer(buf []byte) {
+	if cap(buf) > 0 {
+		fullBuf := buf[:cap(buf)]
+		clear(fullBuf)
+	}
+}
+
+// isRingBuffer checks if a buffer belongs to our pre-allocated ring
 func (p *RingBufferPool) isRingBuffer(buf []byte) bool {
-	if cap(buf) != p.bufferSize || len(buf) == 0 {
+	if cap(buf) != p.bufferSize {
 		return false
 	}
 
-	bufAddr := uintptr(unsafe.Pointer(&buf[0])) // #nosec G103
+	// Get buffer address safely (works for both zero and non-zero length slices)
+	bufAddr := uintptr(unsafe.Pointer(unsafe.SliceData(buf))) // #nosec G103
 
-	return p.bufferAddrs[bufAddr]
+	_, exists := p.bufferAddrs[bufAddr]
+	return exists
 }
 
 // Stats returns pool statistics
