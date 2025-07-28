@@ -12,7 +12,7 @@ require (
 	github.com/xtaci/kcp-go/v5 v5.6.22
 	github.com/xtaci/smux v1.5.34
 	golang.org/x/sync v0.16.0
-	google.golang.org/grpc v1.73.0
+	google.golang.org/grpc v1.74.2
 )
 
 require (
@@ -22,7 +22,6 @@ require (
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
 	github.com/go-kratos/grpc-gateway/v2 v2.5.1-0.20210811062259-c92d36e434b1 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-playground/form/v4 v4.2.1 // indirect
 	github.com/golang/glog v1.2.5 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -31,6 +30,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/reedsolomon v1.12.5 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -41,8 +41,6 @@ require (
 	github.com/templexxx/cpu v0.1.1 // indirect
 	github.com/templexxx/xorsimd v0.4.3 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
-	go.opentelemetry.io/otel v1.36.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.36.0 // indirect
 	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
