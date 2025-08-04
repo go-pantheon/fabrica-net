@@ -7,7 +7,7 @@ require (
 	github.com/go-kratos/swagger-api v1.0.1
 	github.com/go-pantheon/fabrica-util v0.0.36
 	github.com/gorilla/websocket v1.5.3
-	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/client_golang v1.23.0
 	github.com/stretchr/testify v1.10.0
 	github.com/xtaci/kcp-go/v5 v5.6.22
 	github.com/xtaci/smux v1.5.34
