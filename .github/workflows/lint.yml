@@ -39,7 +39,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - id: set-matrix
         run: ./.hack/resolve-modules.sh
@@ -52,7 +52,7 @@ jobs:
       matrix: ${{ fromJson(needs.resolve-modules.outputs.matrix) }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
